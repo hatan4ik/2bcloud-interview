@@ -1,0 +1,89 @@
+# Node.js with React
+# Build a Node.js project that uses React.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/javascript
+
+trigger: none
+
+stages:
+  - stage: Build
+    jobs:
+      - job: Build
+        displayName: Build web app
+        pool: 'ccoe-container-lab'
+        steps:
+          - task: CopyFiles@2
+            displayName: Update web app resources database
+            inputs:
+              sourceFolder: '$(System.DefaultWorkingDirectory)/outputs_generator/'
+              contents: 'resources.json'
+              targetFolder: '$(System.DefaultWorkingDirectory)/naming-web/public'
+              overWrite: true
+
+          - task: NodeTool@0
+            inputs:
+              versionSpec: '10.x'
+            displayName: 'Install Node.js'
+
+          - script: |
+              npm install
+            displayName: 'npm install'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/naming-web'
+
+          - script: |
+              npm run build
+            displayName: 'npm run build'
+            workingDirectory: '$(System.DefaultWorkingDirectory)/naming-web'
+
+          - publish: '$(System.DefaultWorkingDirectory)/naming-web/build'
+            artifact: 'package'
+            displayName: 'Publish Pipeline artifact'
+
+  - stage: Publish_Lab
+    displayName: Publish Application in Lab
+    jobs:
+    - job: Publish_Lab
+      displayName: Publish Application
+      pool: 'ccoe-vmss-lab-test2'
+      steps:
+        - checkout: none
+
+        - download: current
+          artifact: package
+
+        - task: AzureCLI@2
+          displayName: Publish Web Application
+          inputs:
+            azureSubscription: 'lab-ccoe-product-team'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az storage blob delete-batch -s '$web' --account-name stanamingweu1l001 --auth-mode login
+              az storage blob upload-batch -d '$web' --account-name stanamingweu1l001 -s . --auth-mode login
+            addSpnToEnvironment: true
+            workingDirectory: '$(Pipeline.Workspace)/package'
+
+  - stage: Publish_Corp
+    displayName: Publish Application in Corp
+    dependsOn: [Build]
+    jobs:
+    - job: Publish_Corp
+      displayName: Publish Application
+      pool: 'ccoe-container-corp-westeurope-all'
+      steps:
+        - checkout: none
+
+        - download: current
+          artifact: package
+
+        - task: AzureCLI@2
+          displayName: Publish Web Application
+          inputs:
+            azureSubscription: 'corp-sub-product-p-prodcert-01'
+            scriptType: 'bash'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              az storage blob delete-batch -s '$web' --account-name stanamingweu1p001 --auth-mode login
+              az storage blob upload-batch -d '$web' --account-name stanamingweu1p001 -s . --auth-mode login
+            addSpnToEnvironment: true
+            workingDirectory: '$(Pipeline.Workspace)/package'
