@@ -1,0 +1,662 @@
+[
+ {
+  "name": "action_group",
+  "convention": "action_group",
+  "code": "acg"
+ },
+ {
+  "name": "allow_network_security_group",
+  "convention": "network_security_group",
+  "code": "allow"
+ },
+ {
+  "name": "analytics_service",
+  "convention": "default",
+  "code": "anl"
+ },
+ {
+  "name": "api_management",
+  "convention": "default",
+  "code": "api"
+ },
+ {
+  "name": "app_configuration",
+  "convention": "default",
+  "code": "acf"
+ },
+ {
+  "name": "app_service",
+  "convention": "default",
+  "code": "app"
+ },
+ {
+  "name": "app_service_certificate",
+  "convention": "default",
+  "code": "asc"
+ },
+ {
+  "name": "app_service_domain",
+  "convention": "default",
+  "code": "hpc"
+ },
+ {
+  "name": "app_service_environment",
+  "convention": "default",
+  "code": "ase"
+ },
+ {
+  "name": "app_service_plan",
+  "convention": "default",
+  "code": "asp"
+ },
+ {
+  "name": "application_gateway",
+  "convention": "default",
+  "code": "agw"
+ },
+ {
+  "name": "application_insight",
+  "convention": "default",
+  "code": "ais"
+ },
+ {
+  "name": "application_security_group",
+  "convention": "default",
+  "code": "asg"
+ },
+ {
+  "name": "availability_set",
+  "convention": "default",
+  "code": "avs"
+ },
+ {
+  "name": "azure_cache_for_redis",
+  "convention": "default",
+  "code": "rds"
+ },
+ {
+  "name": "azure_data_explorer_cluster",
+  "convention": "default",
+  "code": "dev"
+ },
+ {
+  "name": "azure_database_migration_service",
+  "convention": "default",
+  "code": "mig"
+ },
+ {
+  "name": "azure_db_for_mariadb_server",
+  "convention": "default",
+  "code": "mdb"
+ },
+ {
+  "name": "azure_db_for_mysql",
+  "convention": "default",
+  "code": "mys"
+ },
+ {
+  "name": "azure_db_for_postgresql",
+  "convention": "default",
+  "code": "pos"
+ },
+ {
+  "name": "azure_firewall",
+  "convention": "default",
+  "code": "fwl"
+ },
+ {
+  "name": "azure_spring_cloud",
+  "convention": "default",
+  "code": "spr"
+ },
+ {
+  "name": "azure_sql_server",
+  "convention": "default",
+  "code": "sqs"
+ },
+ {
+  "name": "bastion",
+  "convention": "default",
+  "code": "bst"
+ },
+ {
+  "name": "batch_account",
+  "convention": "default",
+  "code": "bac"
+ },
+ {
+  "name": "blockchain_service",
+  "convention": "default",
+  "code": "blk"
+ },
+ {
+  "name": "blueprint",
+  "convention": "default",
+  "code": "bpr"
+ },
+ {
+  "name": "bot_channel_registration",
+  "convention": "default",
+  "code": "btc"
+ },
+ {
+  "name": "cdn_profile",
+  "convention": "default",
+  "code": "cdn"
+ },
+ {
+  "name": "cloud_simple_node",
+  "convention": "default",
+  "code": "csn"
+ },
+ {
+  "name": "cloud_simple_service",
+  "convention": "default",
+  "code": "csc"
+ },
+ {
+  "name": "cloud_simple_vm",
+  "convention": "default",
+  "code": "csv"
+ },
+ {
+  "name": "connections",
+  "convention": "default",
+  "code": "con"
+ },
+ {
+  "name": "container_instance",
+  "convention": "default",
+  "code": "aci"
+ },
+ {
+  "name": "container_registry",
+  "convention": "default_without_dashes",
+  "code": "reg"
+ },
+ {
+  "name": "cosmos_db",
+  "convention": "default",
+  "code": "cdb"
+ },
+ {
+  "name": "data_box",
+  "convention": "default",
+  "code": "dbx"
+ },
+ {
+  "name": "data_box_edge_gateway",
+  "convention": "default",
+  "code": "dxg"
+ },
+ {
+  "name": "data_factories",
+  "convention": "default",
+  "code": "dfc"
+ },
+ {
+  "name": "data_lake_analytics",
+  "convention": "default",
+  "code": "dla"
+ },
+ {
+  "name": "data_lake_storage_gen1",
+  "convention": "default",
+  "code": "dl1"
+ },
+ {
+  "name": "data_lake_storage_gen_2",
+  "convention": "default",
+  "code": "dl2"
+ },
+ {
+  "name": "data_share",
+  "convention": "default",
+  "code": "dsh"
+ },
+ {
+  "name": "databricks",
+  "convention": "default",
+  "code": "dbr"
+ },
+ {
+  "name": "ddos_protection",
+  "convention": "default",
+  "code": "dos"
+ },
+ {
+  "name": "deny_network_security_group",
+  "convention": "network_security_group",
+  "code": "deny"
+ },
+ {
+  "name": "device_provisioning_service",
+  "convention": "default",
+  "code": "dps"
+ },
+ {
+  "name": "diagnostic_settings_suffix",
+  "convention": "diagnostic_settings_suffix",
+  "code": "dgs"
+ },
+ {
+  "name": "elastic_job_agents",
+  "convention": "default",
+  "code": "ela"
+ },
+ {
+  "name": "event_grid_domain",
+  "convention": "default",
+  "code": "egr"
+ },
+ {
+  "name": "event_grid_topic",
+  "convention": "default",
+  "code": "egt"
+ },
+ {
+  "name": "event_hub_cluster",
+  "convention": "default",
+  "code": "ehc"
+ },
+ {
+  "name": "event_hubs",
+  "convention": "default",
+  "code": "ehb"
+ },
+ {
+  "name": "eventhub_namespace",
+  "convention": "default",
+  "code": "ehn"
+ },
+ {
+  "name": "express_route_circuit",
+  "convention": "default",
+  "code": "erc"
+ },
+ {
+  "name": "front_door",
+  "convention": "default",
+  "code": "fdr"
+ },
+ {
+  "name": "function_app",
+  "convention": "default",
+  "code": "fna"
+ },
+ {
+  "name": "host",
+  "convention": "default",
+  "code": "hst"
+ },
+ {
+  "name": "host_group",
+  "convention": "default",
+  "code": "hgr"
+ },
+ {
+  "name": "image",
+  "convention": "default",
+  "code": "img"
+ },
+ {
+  "name": "integration_account",
+  "convention": "default",
+  "code": "icc"
+ },
+ {
+  "name": "integration_service_environment",
+  "convention": "default",
+  "code": "ise"
+ },
+ {
+  "name": "iot_central_application",
+  "convention": "default",
+  "code": "cap"
+ },
+ {
+  "name": "iot_hub",
+  "convention": "default",
+  "code": "iot"
+ },
+ {
+  "name": "ip_configuration",
+  "convention": "default",
+  "code": "ipc"
+ },
+ {
+  "name": "key_vault",
+  "convention": "default",
+  "code": "kvt"
+ },
+ {
+  "name": "kubernetes_service",
+  "convention": "default",
+  "code": "aks"
+ },
+ {
+  "name": "load_balancer",
+  "convention": "default",
+  "code": "lbc"
+ },
+ {
+  "name": "local_network_gateway",
+  "convention": "default",
+  "code": "lng"
+ },
+ {
+  "name": "lock",
+  "convention": "default",
+  "code": "lck"
+ },
+ {
+  "name": "log_analytics_workspace",
+  "convention": "default",
+  "code": "law"
+ },
+ {
+  "name": "logic_app",
+  "convention": "default",
+  "code": "lap"
+ },
+ {
+  "name": "logic_apps_custom_connector",
+  "convention": "default",
+  "code": "lac"
+ },
+ {
+  "name": "machine_learning",
+  "convention": "default",
+  "code": "mlr"
+ },
+ {
+  "name": "managed_identity",
+  "convention": "default",
+  "code": "mid"
+ },
+ {
+  "name": "management_group",
+  "convention": "management_group",
+  "code": "mgt"
+ },
+ {
+  "name": "media_service",
+  "convention": "default",
+  "code": "msr"
+ },
+ {
+  "name": "mesh_application",
+  "convention": "default",
+  "code": "msh"
+ },
+ {
+  "name": "network_interface",
+  "convention": "default",
+  "code": "nti"
+ },
+ {
+  "name": "network_profile",
+  "convention": "default",
+  "code": "ntp"
+ },
+ {
+  "name": "network_watcher",
+  "convention": "default",
+  "code": "ntw"
+ },
+ {
+  "name": "notification_hub",
+  "convention": "default",
+  "code": "nhu"
+ },
+ {
+  "name": "on_premise_data_gateway",
+  "convention": "default",
+  "code": "dgw"
+ },
+ {
+  "name": "policy_assignment",
+  "convention": "default",
+  "code": "poa"
+ },
+ {
+  "name": "policy_definition",
+  "convention": "default",
+  "code": "pol"
+ },
+ {
+  "name": "power_bi_embedded",
+  "convention": "default",
+  "code": "pbi"
+ },
+ {
+  "name": "private_dns_zone",
+  "convention": "default",
+  "code": "pdn"
+ },
+ {
+  "name": "private_endpoint",
+  "convention": "private_endpoint",
+  "code": "pep"
+ },
+ {
+  "name": "private_service_connection",
+  "convention": "private_endpoint",
+  "code": "psc"
+ },
+ {
+  "name": "proximity_placement_group",
+  "convention": "default",
+  "code": "ppg"
+ },
+ {
+  "name": "public_ip",
+  "convention": "default",
+  "code": "pip"
+ },
+ {
+  "name": "public_ip_prefix",
+  "convention": "default",
+  "code": "pix"
+ },
+ {
+  "name": "recovery_service_vault",
+  "convention": "default",
+  "code": "rvt"
+ },
+ {
+  "name": "relay",
+  "convention": "default",
+  "code": "rly"
+ },
+ {
+  "name": "resource_group",
+  "convention": "default",
+  "code": "rsg"
+ },
+ {
+  "name": "resource_health_alert",
+  "convention": "health_alert",
+  "code": "rha"
+ },
+ {
+  "name": "route_filter",
+  "convention": "default",
+  "code": "rfi"
+ },
+ {
+  "name": "route_static",
+  "convention": "default",
+  "code": "rtr"
+ },
+ {
+  "name": "route_table",
+  "convention": "default",
+  "code": "udr"
+ },
+ {
+  "name": "search_service",
+  "convention": "default",
+  "code": "sch"
+ },
+ {
+  "name": "sendgrid_account",
+  "convention": "default",
+  "code": "sgr"
+ },
+ {
+  "name": "service_bus",
+  "convention": "default",
+  "code": "sbs"
+ },
+ {
+  "name": "service_endpoint_policy",
+  "convention": "default",
+  "code": "sep"
+ },
+ {
+  "name": "service_fabric_cluster",
+  "convention": "default",
+  "code": "sfc"
+ },
+ {
+  "name": "service_health_alert",
+  "convention": "health_alert",
+  "code": "sha"
+ },
+ {
+  "name": "service_principal",
+  "convention": "service_principal",
+  "code": "sp"
+ },
+ {
+  "name": "snapshot",
+  "convention": "default",
+  "code": "snp"
+ },
+ {
+  "name": "sql_data_warehouse",
+  "convention": "default",
+  "code": "dwh"
+ },
+ {
+  "name": "sql_database",
+  "convention": "default",
+  "code": "sql"
+ },
+ {
+  "name": "sql_elastic_pool",
+  "convention": "default",
+  "code": "epo"
+ },
+ {
+  "name": "sql_hdinsights_cluster",
+  "convention": "default",
+  "code": "hdi"
+ },
+ {
+  "name": "sql_managed_instance",
+  "convention": "default",
+  "code": "sqm"
+ },
+ {
+  "name": "sql_server_registrie",
+  "convention": "default",
+  "code": "sqr"
+ },
+ {
+  "name": "sql_virtual_machine",
+  "convention": "default",
+  "code": "sqx"
+ },
+ {
+  "name": "storage_account",
+  "convention": "default_without_dashes",
+  "code": "sta"
+ },
+ {
+  "name": "storsimple_data_manager",
+  "convention": "default",
+  "code": "ssd"
+ },
+ {
+  "name": "stream_analytics_job",
+  "convention": "default",
+  "code": "saj"
+ },
+ {
+  "name": "subnet",
+  "convention": "default_with_suffix",
+  "code": "snt"
+ },
+ {
+  "name": "subscription",
+  "convention": "subscription",
+  "code": "sub"
+ },
+ {
+  "name": "time_series_insights_environment",
+  "convention": "default",
+  "code": "tsi"
+ },
+ {
+  "name": "traffic_manager",
+  "convention": "default",
+  "code": "tfm"
+ },
+ {
+  "name": "virtual_machine",
+  "convention": "virtual_machine",
+  "code": "vm"
+ },
+ {
+  "name": "virtual_machine_data_disk",
+  "convention": "vm_subresource",
+  "code": "dtd"
+ },
+ {
+  "name": "virtual_machine_extension",
+  "convention": "vm_subresource",
+  "code": "ext"
+ },
+ {
+  "name": "virtual_machine_network_interface",
+  "convention": "vm_subresource",
+  "code": "nti"
+ },
+ {
+  "name": "virtual_machine_os_disk",
+  "convention": "vm_subresource",
+  "code": "osd"
+ },
+ {
+  "name": "virtual_machine_scale_set",
+  "convention": "default",
+  "code": "vms"
+ },
+ {
+  "name": "virtual_network",
+  "convention": "default",
+  "code": "vnt"
+ },
+ {
+  "name": "virtual_network_gateway",
+  "convention": "default",
+  "code": "vng"
+ },
+ {
+  "name": "virtual_network_peering",
+  "convention": "default",
+  "code": "vnp"
+ },
+ {
+  "name": "virtual_wan",
+  "convention": "default",
+  "code": "vwn"
+ },
+ {
+  "name": "waf_policy",
+  "convention": "default",
+  "code": "wpl"
+ }
+]
