@@ -38,3 +38,4 @@ terraform.rc
 .trunk
 replace-project-url.py
 reset-git.sh
+git_auto_commit.sh
