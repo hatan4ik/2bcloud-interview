@@ -2,6 +2,14 @@
 import os
 import subprocess
 
+# Function to stash local changes if needed
+def stash_changes(repo_path):
+    subprocess.run(["git", "stash", "-u"], cwd=repo_path)
+
+# Function to apply stash after branch switching
+def apply_stash(repo_path):
+    subprocess.run(["git", "stash", "pop"], cwd=repo_path)
+
 # Function to replace content in a file
 def replace_in_file(file_path, old_string, new_string):
     try:
@@ -19,9 +27,13 @@ def replace_in_file(file_path, old_string, new_string):
     except Exception as e:
         print(f"Error processing file {file_path}: {e}")
 
-# Function to replace the URL in the current working directory (for all files)
+# Function to replace the URL in the current working directory (for all files except .git folder)
 def replace_in_repository(repo_path, old_url, new_url):
     for root, dirs, files in os.walk(repo_path):
+        # Skip the .git directory and its contents
+        if '.git' in dirs:
+            dirs.remove('.git')
+
         for file_name in files:
             file_path = os.path.join(root, file_name)
             replace_in_file(file_path, old_url, new_url)
@@ -42,26 +54,39 @@ def replace_in_tags(repo_path, old_url, new_url):
         for tag in tags:
             print(f"Processing tag: {tag}")
 
-            # Checkout the tag
-            subprocess.run(["git", "checkout", tag], cwd=repo_path)
+            # Stash any uncommitted changes
+            stash_changes(repo_path)
+
+            # Create a new branch from the tag
+            branch_name = f"temp-branch-for-{tag}"
+
+            # Check if the temp branch already exists, delete it if it does
+            subprocess.run(["git", "branch", "-D", branch_name], cwd=repo_path, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+
+            # Create the temporary branch from the tag
+            subprocess.run(["git", "checkout", "-b", branch_name, tag], cwd=repo_path)
 
             # Replace content in the files
             replace_in_repository(repo_path, old_url, new_url)
 
-            # Commit the changes (if any)
-            subprocess.run(
-                ["git", "commit", "-am", f"Update URL in tag {tag}"],
-                cwd=repo_path
-            )
+            # Commit the changes
+            subprocess.run(["git", "commit", "-am", f"Update URL in tag {tag}"], cwd=repo_path)
 
-            # Push the changes for the tag
-            subprocess.run(
-                ["git", "push", "origin", f"refs/tags/{tag}"],
-                cwd=repo_path
-            )
+            # Move the tag to the new commit
+            subprocess.run(["git", "tag", "-f", tag], cwd=repo_path)
 
-        # Switch back to the main branch (assuming it's main or master)
-        subprocess.run(["git", "checkout", "main"], cwd=repo_path)
+            # Switch back to the master branch
+            subprocess.run(["git", "checkout", "master"], cwd=repo_path)
+
+            # Delete the temporary branch
+            subprocess.run(["git", "branch", "-D", branch_name], cwd=repo_path)
+
+            # Push the updated tag to the remote repository
+            subprocess.run(["git", "push", "--force", "origin", f"refs/tags/{tag}"], cwd=repo_path)
+
+            # Apply the stashed changes after switching branches
+            apply_stash(repo_path)
+
     except Exception as e:
         print(f"Error processing tags: {e}")
 
