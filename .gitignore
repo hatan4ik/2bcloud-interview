@@ -36,3 +36,5 @@ override.tf.json
 .terraformrc
 terraform.rc
 .trunk
+replace-project-url.py
+reset-git.sh
