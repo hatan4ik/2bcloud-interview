@@ -462,44 +462,79 @@ output "key_vault_name" {
 output "storage_account_name" {
   value = azurerm_storage_account.main.name
 }
+
+resource "null_resource" "download_cert_manager_crds" {
+  provisioner "local-exec" {
+    command = "curl -L -o ${path.module}/cert-manager.crds.yaml https://github.com/jetstack/cert-manager/releases/download/v1.11.0/cert-manager.crds.yaml"
+  }
+}
+
+resource "null_resource" "download_cert_manager" {
+  provisioner "local-exec" {
+    command = "curl -L -o ${path.module}/cert-manager.yaml https://github.com/jetstack/cert-manager/releases/download/v1.11.0/cert-manager.yaml"
+  }
+}
+
+data "local_file" "cert_manager_crds" {
+  filename = "${path.module}/cert-manager.crds.yaml"
+  depends_on = [null_resource.download_cert_manager_crds]
+}
+
+data "local_file" "cert_manager" {
+  filename = "${path.module}/cert-manager.yaml"
+  depends_on = [null_resource.download_cert_manager]
+}
+
+resource "kubectl_manifest" "cert_manager_crds" {
+  yaml_body = data.local_file.cert_manager_crds.content
+}
+
+resource "kubectl_manifest" "cert_manager" {
+  yaml_body = data.local_file.cert_manager.content
+  depends_on = [kubectl_manifest.cert_manager_crds]
+}
+
+
 # Deploy Cert Manager using Helm
-resource "helm_release" "cert_manager" {
-  name       = "cert-manager"
-  namespace  = "cert-manager"
-  chart      = "cert-manager"
-  repository = "https://charts.jetstack.io"
-  version    = "v1.7.1"
+# resource "helm_release" "cert_manager" {
+#   name       = "cert-manager"
+#   repository = "https://charts.jetstack.io"
+#   chart      = "cert-manager"
+#   version    = "v1.11.0"  # Specify a known working version
+#   namespace  = "cert-manager"
+#   create_namespace = true
 
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
+#   set {
+#     name  = "installCRDs"
+#     value = "true"
+#   }
 
-  set {
-    name  = "extraArgs"
-    value = "--enable-certificate-owner-ref"
-  }
+#   set {
+#     name  = "extraArgs"
+#     value = "--enable-certificate-owner-ref"
+#   }
 
-  # External DNS integration (you need to configure DNS provider credentials)
-  set {
-    name  = "external-dns"
-    value = "true"
-  }
+#   # External DNS integration (you need to configure DNS provider credentials)
+#   set {
+#     name  = "external-dns"
+#     value = "true"
+#   }
 
-  # Workload identity settings (if required)
-  set {
-    name  = "workloadIdentity"
-    value = "true"
-  }
+#   # Workload identity settings (if required)
+#   set {
+#     name  = "workloadIdentity"
+#     value = "true"
+#   }
 
-  depends_on = [azurerm_kubernetes_cluster.aks]
-}# Redis Sentinel Helm Deployment using Bitnami chart
+#   depends_on = [azurerm_kubernetes_cluster.aks]
+# }
+# Redis Sentinel Helm Deployment using Bitnami chart
 resource "helm_release" "redis_sentinel" {
   name       = "redis-sentinel"
-  namespace  = "default"
-  chart      = "redis"
   repository = "https://charts.bitnami.com/bitnami"
-  version    = "15.7.2"
+  chart      = "redis"
+  version    = "17.11.3"  # Update to a known working version
+  namespace  = "default"
 
   set {
     name  = "replica.replicaCount"
@@ -530,7 +565,7 @@ resource "helm_release" "redis_sentinel" {
 }
 
 # Kubernetes resource to configure HPA (CPU/Memory autoscaling)
-resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
+resource "kubernetes_horizontal_pod_autoscaler_v2" "nginx_hpa" {
   metadata {
     name      = "nginx-hpa"
     namespace = "default"
@@ -540,7 +575,7 @@ resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
     scale_target_ref {
       api_version = "apps/v1"
       kind        = "Deployment"
-      name        = "nginx-deployment" 
+      name        = "nginx-deployment"
     }
 
     min_replicas = 1
@@ -551,8 +586,8 @@ resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
       resource {
         name = "cpu"
         target {
-          type = "Utilization"
-          average_utilization = 50 
+          type                = "Utilization"
+          average_utilization = 50
         }
       }
     }
@@ -562,12 +597,10 @@ resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
       resource {
         name = "memory"
         target {
-          type = "Utilization"
-          average_utilization = 75 
+          type                = "Utilization"
+          average_utilization = 75
         }
       }
     }
   }
-
-  depends_on = [azurerm_kubernetes_cluster.aks]
 }
