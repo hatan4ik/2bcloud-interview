@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+
+    environment {
+        ACR_LOGIN_SERVER = "${acr_login_server}"  // ACR URL from Terraform
+        AKS_RESOURCE_GROUP = 'Nathanel-Candidate'
+        AKS_CLUSTER_NAME = 'myAKSCluster'
+        DOCKER_IMAGE = "${ACR_LOGIN_SERVER}/my-node-app:v1"
+    }
+
+    stages {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build('my-node-app')
+                }
+            }
+        }
+
+        stage('Login to ACR') {
+            steps {
+                script {
+                    sh "az acr login --name ${ACR_LOGIN_SERVER}"
+                }
+            }
+        }
+
+        stage('Push Image to ACR') {
+            steps {
+                script {
+                    sh """
+                    docker tag my-node-app ${DOCKER_IMAGE}
+                    docker push ${DOCKER_IMAGE}
+                    """
+                }
+            }
+        }
+
+        stage('Login to AKS') {
+            steps {
+                script {
+                    sh "az aks get-credentials --resource-group ${AKS_RESOURCE_GROUP} --name ${AKS_CLUSTER_NAME}"
+                }
+            }
+        }
+
+        stage('Deploy to AKS') {
+            steps {
+                script {
+                    sh "kubectl apply -f deployment.yaml"
+                }
+            }
+        }
+    }
+}

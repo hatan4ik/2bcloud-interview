@@ -296,22 +296,18 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
     version   = "latest"
   }
 
-  # Embedded Jenkins installation script
+  # Embedded Jenkins installation and credential storage script
   custom_data = base64encode(<<-EOT
     #!/bin/bash
     apt-get update
-    apt-get install -y docker.io git
-    systemctl enable docker
-    systemctl start docker
+    apt-get install -y docker.io git jq curl
 
     # Install Java (required for Jenkins)
     apt-get install -y openjdk-11-jdk
 
-    # Add Jenkins repository and key
+    # Install Jenkins
     wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | apt-key add -
     sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
-
-    # Install Jenkins
     apt-get update
     apt-get install -y jenkins
 
@@ -319,13 +315,32 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
     systemctl enable jenkins
     systemctl start jenkins
 
+    # Wait for Jenkins to start up
+    sleep 60
+
+    # Retrieve Jenkins admin password
+    JENKINS_ADMIN_PASS=$(cat /var/lib/jenkins/secrets/initialAdminPassword)
+
+    # Generate Jenkins API Token
+    curl -X POST -u "admin:$JENKINS_ADMIN_PASS" -d 'json={"authenticityToken":"","username":"admin","password":"'"$JENKINS_ADMIN_PASS"'","credentialDescription":"Terraform-generated token"}' \
+    http://localhost:8080/me/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken | jq -r .data.token > /tmp/jenkins-api-token.txt
+    JENKINS_API_TOKEN=$(cat /tmp/jenkins-api-token.txt)
+
+    # Store Jenkins credentials in Key Vault using Azure CLI
+    az login --identity
+    az keyvault secret set --vault-name "mykeyvault" --name "jenkins-admin-user" --value "admin"
+    az keyvault secret set --vault-name "mykeyvault" --name "jenkins-api-token" --value "$JENKINS_API_TOKEN"
+
+    # Clean up token file
+    rm /tmp/jenkins-api-token.txt
+
     # Print Jenkins Initial Admin Password
-    echo "Jenkins installation completed. You can find the initial admin password at:"
-    cat /var/lib/jenkins/secrets/initialAdminPassword
+    echo "Jenkins installation completed. Admin password and API token stored in Key Vault."
   EOT
   )
 
-  depends_on = [azurerm_network_interface_security_group_association.jenkins_nsg_assoc]
+  depends_on = [azurerm_key_vault.main,
+  azurerm_network_interface_security_group_association.jenkins_nsg_assoc]
 }
 
 # AKS Cluster (Updated - Removed docker_bridge_cidr)
@@ -609,6 +624,21 @@ resource "azurerm_public_ip" "ingress_ip" {
   resource_group_name = data.azurerm_resource_group.main.name
   allocation_method   = "Static"
   sku                 = "Standard"
+}
+
+# Public IP for Jenkins VM (if not already present)
+resource "azurerm_public_ip" "jenkins_public_ip" {
+  name                = "jenkins-public-ip"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# Output the public IP for Jenkins
+output "jenkins_public_ip" {
+  value       = azurerm_public_ip.jenkins_public_ip.ip_address
+  description = "Jenkins Public IP"
 }
 
 # resource "helm_release" "nginx_ingress" {
