@@ -236,6 +236,9 @@ resource "azurerm_key_vault" "main" {
     secret_permissions = [
       "Get", "List", "Set", "Delete",
     ]
+    certificate_permissions = [
+      "List", "Get", "Create", "Delete", "Import", "Update"
+    ]
   }
 }
 
