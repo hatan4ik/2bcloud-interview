@@ -87,6 +87,17 @@ resource "azurerm_subnet" "pe_subnet" {
   service_endpoints    = ["Microsoft.KeyVault", "Microsoft.Storage"]
 }
 
+
+
+# Static Public IP for Ingress
+resource "azurerm_public_ip" "ingress" {
+  name                = "ingress-public-ip"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
 # NAT Gateway and Public IP
 resource "azurerm_public_ip" "nat_gateway_ip" {
   name                = "nat-gateway-ip"
@@ -325,7 +336,12 @@ resource "azurerm_kubernetes_cluster" "aks" {
   dns_prefix          = "myakscluster"
   kubernetes_version  = "1.30.4"
   sku_tier            = "Standard"
-
+  # Enable addons individually
+  key_vault_secrets_provider {
+    secret_rotation_enabled = true
+  }
+  oidc_issuer_enabled       = true
+  workload_identity_enabled = true
   default_node_pool {
     name           = "default"
     node_count     = 1
@@ -510,39 +526,39 @@ resource "kubectl_manifest" "cert_manager" {
 }
 
 
-# Deploy Cert Manager using Helm
-# resource "helm_release" "cert_manager" {
-#   name       = "cert-manager"
-#   repository = "https://charts.jetstack.io"
-#   chart      = "cert-manager"
-#   version    = "v1.11.0"  # Specify a known working version
-#   namespace  = "cert-manager"
-#   create_namespace = true
+## Deploy Cert Manager using Helm
+resource "helm_release" "cert_manager" {
+  name       = "cert-manager"
+  repository = "https://charts.jetstack.io"
+  chart      = "cert-manager"
+  version    = "v1.11.0"  # Specify a known working version
+  namespace  = "cert-manager"
+  create_namespace = true
 
-#   set {
-#     name  = "installCRDs"
-#     value = "true"
-#   }
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
 
-#   set {
-#     name  = "extraArgs"
-#     value = "--enable-certificate-owner-ref"
-#   }
+  set {
+    name  = "extraArgs"
+    value = "--enable-certificate-owner-ref"
+  }
 
-#   # External DNS integration (you need to configure DNS provider credentials)
-#   set {
-#     name  = "external-dns"
-#     value = "true"
-#   }
+  # External DNS integration (you need to configure DNS provider credentials)
+  set {
+    name  = "external-dns"
+    value = "true"
+  }
 
-#   # Workload identity settings (if required)
-#   set {
-#     name  = "workloadIdentity"
-#     value = "true"
-#   }
+  # Workload identity settings (if required)
+  set {
+    name  = "workloadIdentity"
+    value = "true"
+  }
 
-#   depends_on = [azurerm_kubernetes_cluster.aks]
-# }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
 # Redis Sentinel Helm Deployment using Bitnami chart
 resource "helm_release" "redis_sentinel" {
   name       = "redis-sentinel"
@@ -640,6 +656,10 @@ resource "helm_release" "nginx_ingress" {
     name  = "controller.service.loadBalancerIP"
     value = azurerm_public_ip.ingress_ip.ip_address
   }
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-dns-label-name"
+    value = "my-aks-ingress"  # Replace with your desired DNS label
+  }
 
   depends_on = [
     azurerm_kubernetes_cluster.aks,
@@ -648,3 +668,53 @@ resource "helm_release" "nginx_ingress" {
 }
 
 
+
+
+# Helm release for External DNS
+resource "helm_release" "external_dns" {
+  name       = "external-dns"
+  repository = "https://charts.bitnami.com/bitnami"
+  chart      = "external-dns"
+  namespace  = "external-dns"
+  create_namespace = true
+
+  set {
+    name  = "provider"
+    value = "azure"
+  }
+
+  set {
+    name  = "azure.resourceGroup"
+    value = data.azurerm_resource_group.main.name
+  }
+
+  set {
+    name  = "azure.tenantId"
+    value = data.azurerm_client_config.current.tenant_id
+  }
+
+  set {
+    name  = "azure.subscriptionId"
+    value = data.azurerm_client_config.current.subscription_id
+  }
+
+  # Use Workload Identity for authentication
+  set {
+    name  = "serviceAccount.annotations.azure\\.workload\\.identity/client-id"
+    value = azurerm_user_assigned_identity.external_dns.client_id
+  }
+}
+
+# User Assigned Identity for External DNS
+resource "azurerm_user_assigned_identity" "external_dns" {
+  name                = "external-dns-identity"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+}
+
+# Role assignment for External DNS
+resource "azurerm_role_assignment" "external_dns_contributor" {
+  scope                = data.azurerm_resource_group.main.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_user_assigned_identity.external_dns.principal_id
+}
