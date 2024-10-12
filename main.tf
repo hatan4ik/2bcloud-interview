@@ -499,7 +499,7 @@ resource "helm_release" "redis_sentinel" {
   namespace  = "default"
   chart      = "redis"
   repository = "https://charts.bitnami.com/bitnami"
-  version    = "15.5.0"
+  version    = "15.7.2"
 
   set {
     name  = "replica.replicaCount"
