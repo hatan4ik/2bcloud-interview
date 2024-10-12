@@ -641,7 +641,10 @@ resource "helm_release" "nginx_ingress" {
     value = azurerm_public_ip.ingress_ip.ip_address
   }
 
-  depends_on = [azurerm_kubernetes_cluster.aks]
+  depends_on = [
+    azurerm_kubernetes_cluster.aks,
+    azurerm_public_ip.ingress_ip
+    ]
 }
 
 
