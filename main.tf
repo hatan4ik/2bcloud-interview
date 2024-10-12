@@ -462,3 +462,107 @@ output "key_vault_name" {
 output "storage_account_name" {
   value = azurerm_storage_account.main.name
 }
+# Deploy Cert Manager using Helm
+resource "helm_release" "cert_manager" {
+  name       = "cert-manager"
+  namespace  = "cert-manager"
+  chart      = "cert-manager"
+  repository = "https://charts.jetstack.io"
+  version    = "v1.7.1"
+
+  set {
+    name  = "installCRDs"
+    value = "true"
+  }
+
+  set {
+    name  = "extraArgs"
+    value = "--enable-certificate-owner-ref"
+  }
+
+  # External DNS integration (you need to configure DNS provider credentials)
+  set {
+    name  = "external-dns"
+    value = "true"
+  }
+
+  # Workload identity settings (if required)
+  set {
+    name  = "workloadIdentity"
+    value = "true"
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}# Redis Sentinel Helm Deployment using Bitnami chart
+resource "helm_release" "redis_sentinel" {
+  name       = "redis-sentinel"
+  namespace  = "default"
+  chart      = "redis"
+  repository = "https://charts.bitnami.com/bitnami"
+  version    = "15.5.0"
+
+  set {
+    name  = "replica.replicaCount"
+    value = "3"
+  }
+
+  set {
+    name  = "sentinel.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "sentinel.masterSet"
+    value = "mymaster"
+  }
+
+  set {
+    name  = "redis.replicaCount"
+    value = "3"
+  }
+
+  set {
+    name  = "persistence.size"
+    value = "10Gi"
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+# Kubernetes resource to configure HPA (CPU/Memory autoscaling)
+resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
+  metadata {
+    name      = "nginx-hpa"
+    namespace = "default"
+  }
+
+  spec {
+    scale_target_ref {
+      api_version = "apps/v1"
+      kind        = "Deployment"
+      name        = "nginx-deployment"
+    }
+
+    min_replicas = 1
+    max_replicas = 10
+
+    metric {
+      type = "Resource"
+
+      resource {
+        name                     = "cpu"
+        target_average_utilization = 50
+      }
+    }
+
+    metric {
+      type = "Resource"
+
+      resource {
+        name                     = "memory"
+        target_average_utilization = 75
+      }
+    }
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
