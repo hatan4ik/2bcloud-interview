@@ -525,40 +525,6 @@ resource "kubectl_manifest" "cert_manager" {
   depends_on = [kubectl_manifest.cert_manager_crds]
 }
 
-
-## Deploy Cert Manager using Helm
-resource "helm_release" "cert_manager" {
-  name       = "cert-manager"
-  repository = "https://charts.jetstack.io"
-  chart      = "cert-manager"
-  version    = "v1.11.0"  # Specify a known working version
-  namespace  = "cert-manager"
-  create_namespace = true
-
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
-
-  set {
-    name  = "extraArgs"
-    value = "--enable-certificate-owner-ref"
-  }
-
-  # External DNS integration (you need to configure DNS provider credentials)
-  set {
-    name  = "external-dns"
-    value = "true"
-  }
-
-  # Workload identity settings (if required)
-  set {
-    name  = "workloadIdentity"
-    value = "true"
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks]
-}
 # Redis Sentinel Helm Deployment using Bitnami chart
 resource "helm_release" "redis_sentinel" {
   name       = "redis-sentinel"
@@ -645,65 +611,66 @@ resource "azurerm_public_ip" "ingress_ip" {
   sku                 = "Standard"
 }
 
-resource "helm_release" "nginx_ingress" {
-  name       = "nginx-ingress"
-  repository = "https://kubernetes.github.io/ingress-nginx"
-  chart      = "ingress-nginx"
-  version    = "4.0.13"
-  namespace  = "default"
+# resource "helm_release" "nginx_ingress" {
+#   name       = "nginx-ingress"
+#   repository = "https://kubernetes.github.io/ingress-nginx"
+#   chart      = "ingress-nginx"
+#   version    = "4.7.1"
+#   namespace  = "default"
 
-  set {
-    name  = "controller.service.loadBalancerIP"
-    value = azurerm_public_ip.ingress_ip.ip_address
-  }
-  set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-dns-label-name"
-    value = "my-aks-ingress"  # Replace with your desired DNS label
-  }
+#   set {
+#     name  = "controller.service.loadBalancerIP"
+#     value = azurerm_public_ip.ingress_ip.ip_address
+#   }
+#   set {
+#     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-dns-label-name"
+#     value = "my-aks-ingress"  # Replace with your desired DNS label
+#   }
 
-  depends_on = [
-    azurerm_kubernetes_cluster.aks,
-    azurerm_public_ip.ingress_ip
-    ]
-}
-
-
+#   depends_on = [
+#     azurerm_kubernetes_cluster.aks,
+#     azurerm_public_ip.ingress_ip
+#     ]
+# }
 
 
-# Helm release for External DNS
-resource "helm_release" "external_dns" {
-  name       = "external-dns"
-  repository = "https://charts.bitnami.com/bitnami"
-  chart      = "external-dns"
-  namespace  = "external-dns"
-  create_namespace = true
 
-  set {
-    name  = "provider"
-    value = "azure"
-  }
 
-  set {
-    name  = "azure.resourceGroup"
-    value = data.azurerm_resource_group.main.name
-  }
+# # Helm release for External DNS
+# resource "helm_release" "external_dns" {
+#   version    = "6.10.0"  # Update to the latest stable version
+#   name       = "external-dns"
+#   repository = "https://charts.bitnami.com/bitnami"
+#   chart      = "external-dns"
+#   namespace  = "external-dns"
+#   create_namespace = true
 
-  set {
-    name  = "azure.tenantId"
-    value = data.azurerm_client_config.current.tenant_id
-  }
+#   set {
+#     name  = "provider"
+#     value = "azure"
+#   }
 
-  set {
-    name  = "azure.subscriptionId"
-    value = data.azurerm_client_config.current.subscription_id
-  }
+#   set {
+#     name  = "azure.resourceGroup"
+#     value = data.azurerm_resource_group.main.name
+#   }
 
-  # Use Workload Identity for authentication
-  set {
-    name  = "serviceAccount.annotations.azure\\.workload\\.identity/client-id"
-    value = azurerm_user_assigned_identity.external_dns.client_id
-  }
-}
+#   set {
+#     name  = "azure.tenantId"
+#     value = data.azurerm_client_config.current.tenant_id
+#   }
+
+#   set {
+#     name  = "azure.subscriptionId"
+#     value = data.azurerm_client_config.current.subscription_id
+#   }
+
+#   # Use Workload Identity for authentication
+#   set {
+#     name  = "serviceAccount.annotations.azure\\.workload\\.identity/client-id"
+#     value = azurerm_user_assigned_identity.external_dns.client_id
+#   }
+# }
 
 # User Assigned Identity for External DNS
 resource "azurerm_user_assigned_identity" "external_dns" {
