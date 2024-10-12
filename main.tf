@@ -216,7 +216,7 @@ resource "azurerm_key_vault" "main" {
   network_acls {
     default_action = "Deny"
     bypass         = "AzureServices"
-    ip_rules       = ["109.186.93.97"] #Added My IP addess
+    ip_rules       = ["109.186.93.97", "93.173.118.226"] #Added My IP addess
     virtual_network_subnet_ids = [
       azurerm_subnet.vm_subnet.id,
       azurerm_subnet.aks_subnet.id,
@@ -528,6 +528,7 @@ resource "helm_release" "redis_sentinel" {
 
   depends_on = [azurerm_kubernetes_cluster.aks]
 }
+
 # Kubernetes resource to configure HPA (CPU/Memory autoscaling)
 resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
   metadata {
@@ -539,7 +540,7 @@ resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
     scale_target_ref {
       api_version = "apps/v1"
       kind        = "Deployment"
-      name        = "nginx-deployment"
+      name        = "nginx-deployment" 
     }
 
     min_replicas = 1
@@ -547,19 +548,23 @@ resource "kubernetes_horizontal_pod_autoscaler" "nginx_hpa" {
 
     metric {
       type = "Resource"
-
       resource {
-        name                     = "cpu"
-        target_average_utilization = 50
+        name = "cpu"
+        target {
+          type = "Utilization"
+          average_utilization = 50 
+        }
       }
     }
 
     metric {
       type = "Resource"
-
       resource {
-        name                     = "memory"
-        target_average_utilization = 75
+        name = "memory"
+        target {
+          type = "Utilization"
+          average_utilization = 75 
+        }
       }
     }
   }
