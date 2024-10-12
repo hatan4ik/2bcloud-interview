@@ -350,6 +350,18 @@ resource "azurerm_kubernetes_cluster" "aks" {
   depends_on = [azurerm_subnet.aks_nodes]
 }
 
+resource "azurerm_user_assigned_identity" "aks_identity" {
+  name                = "aks-identity"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
+resource "azurerm_role_assignment" "aks_identity_role" {
+  principal_id        = azurerm_user_assigned_identity.aks_identity.principal_id
+  role_definition_name = "Key Vault Secrets User"
+  scope               = azurerm_key_vault.main.id
+}
+
 # Azure Container Registry
 resource "azurerm_container_registry" "acr" {
   name                = "myacrregistry${random_string.suffix.result}"
@@ -604,3 +616,29 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "nginx_hpa" {
     }
   }
 }
+
+#Added Ingress with Static IP
+resource "azurerm_public_ip" "ingress_ip" {
+  name                = "nginx-ingress-ip"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+resource "helm_release" "nginx_ingress" {
+  name       = "nginx-ingress"
+  repository = "https://kubernetes.github.io/ingress-nginx"
+  chart      = "ingress-nginx"
+  version    = "4.0.13"
+  namespace  = "default"
+
+  set {
+    name  = "controller.service.loadBalancerIP"
+    value = azurerm_public_ip.ingress_ip.ip_address
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+
