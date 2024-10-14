@@ -56,6 +56,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   admin_username      = "adminuser"
   network_interface_ids = [
     azurerm_network_interface.jenkins_nic.id,
+    azurerm_network_interface.jenkins_public_ip.id
   ]
 
   admin_ssh_key {
