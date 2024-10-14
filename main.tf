@@ -1,18 +1,9 @@
-# Define the resource group:
-# **Subscription is not allowing to create a new resource groups at all.
-# resource "azurerm_resource_group" "main" {
-#   name     = "NathanelS-Candidate-RG"
-#   location = "eastus"
-# }
-
 # Random string for unique naming
 resource "random_string" "suffix" {
   length  = 6
   special = false
   upper   = false
 }
-
-
 
 # Network Interface for Jenkins VM
 resource "azurerm_network_interface" "jenkins_nic" {
@@ -33,7 +24,15 @@ resource "azurerm_network_interface_security_group_association" "jenkins_nsg_ass
   network_security_group_id = azurerm_network_security_group.vm_nsg.id
 }
 
-#Associate Public NIC to Jenkins VM
+# Public Network Interface for Jenkins VM
+resource "azurerm_public_ip" "jenkins_public_ip" {
+  name                = "jenkins-public-ip"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
 resource "azurerm_network_interface" "jenkins_nic_public" {
   name                = "jenkins-nic-public"
   location            = data.azurerm_resource_group.main.location
@@ -43,8 +42,10 @@ resource "azurerm_network_interface" "jenkins_nic_public" {
     name                          = "public"
     subnet_id                     = azurerm_subnet.vm_subnet.id
     private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.jenkins_public_ip.id
   }
 }
+
 
 #Associate Public NSG with Public NIC
 resource "azurerm_network_interface_security_group_association" "jenkins_public_nsg_assoc" {

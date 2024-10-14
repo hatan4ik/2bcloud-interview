@@ -1,7 +1,7 @@
-# Output the public IP for easy access
+# Output for Jenkins VM Public IP
 output "jenkins_public_ip" {
-  value       = data.azurerm_public_ip.jenkins_public_ip.ip_address
-  description = "Public IP address of the Jenkins VM"
+  description = "The public IP address of the Jenkins VM"
+  value       = azurerm_public_ip.jenkins_public_ip.ip_address
 }
 output "jenkins_vm_private_ip" {
   value = azurerm_network_interface.jenkins_nic.private_ip_address
