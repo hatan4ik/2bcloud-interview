@@ -147,19 +147,39 @@ resource "azurerm_network_security_group" "vm_nsg" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+  security_rule {
+    name                       = "Jenkins"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8080"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
 }
-# Add an inbound rule to allow HTTP (port 80) traffic
-resource "azurerm_network_security_group_rule" "jenkins_http_rule" {
-  name                       = "AllowHTTP"
-  priority                   = 1002
-  direction                  = "Inbound"
-  access                     = "Allow"
-  protocol                   = "Tcp"
-  source_port_range          = "*"
-  destination_port_range     = "80"
-  source_address_prefix      = "*" 
-  destination_address_prefix = "*"
-  network_security_group_id  = azurerm_network_security_group.vm_nsg.id 
+  security_rule {
+    name                       = "HTTP"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  security_rule {
+    name                       = "HTTPS"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_network_security_group" "pe_nsg" {
@@ -615,14 +635,6 @@ resource "azurerm_public_ip" "jenkins_public_ip" {
   resource_group_name = data.azurerm_resource_group.main.name
   allocation_method   = "Static"
   sku                 = "Standard"
-}
-
-# Associate Public IP with Jenkins NIC
-resource "azurerm_network_interface_ip_configuration" "jenkins_public_ip_config" {
-  name                          = "public"
-  network_interface_id           = azurerm_network_interface.jenkins_nic.id
-  public_ip_address_id          = azurerm_public_ip.jenkins_public_ip.id
-  private_ip_address_allocation = "Dynamic"
 }
 
 # resource "helm_release" "nginx_ingress" {
