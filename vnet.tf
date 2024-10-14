@@ -103,14 +103,13 @@ resource "azurerm_subnet_nat_gateway_association" "main" {
   nat_gateway_id = azurerm_nat_gateway.main.id
 }
 
-# Network Security Groups (NSG)
+# Network Security Group (NSG)
 resource "azurerm_network_security_group" "vm_nsg" {
   name                = "vm-nsg"
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
-  security_rule = [
- {
+  security_rule {
     name                       = "AllowInternetOutbound"
     priority                   = 100
     direction                  = "Outbound"
@@ -120,8 +119,10 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = "Internet"
-  },
-  {
+    description                = "Allow outbound internet traffic"
+  }
+
+  security_rule {
     name                       = "SSH"
     priority                   = 1001
     direction                  = "Inbound"
@@ -131,8 +132,10 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "22"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  },
- {
+    description                = "Allow inbound SSH"
+  }
+
+  security_rule {
     name                       = "Jenkins"
     priority                   = 1002
     direction                  = "Inbound"
@@ -142,8 +145,10 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "8080"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  },
- {
+    description                = "Allow inbound Jenkins traffic"
+  }
+
+  security_rule {
     name                       = "HTTP"
     priority                   = 1003
     direction                  = "Inbound"
@@ -153,8 +158,10 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "80"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  },
-  {
+    description                = "Allow inbound HTTP traffic"
+  }
+
+  security_rule {
     name                       = "HTTPS"
     priority                   = 1004
     direction                  = "Inbound"
@@ -164,9 +171,10 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "443"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
+    description                = "Allow inbound HTTPS traffic"
   }
- ]
 }
+
 resource "azurerm_network_security_group" "pe_nsg" {
   name                = "pe-nsg"
   location            = data.azurerm_resource_group.main.location
