@@ -17,10 +17,10 @@ data "local_file" "cert_manager" {
   depends_on = [null_resource.download_cert_manager]
 }
 
-data "azurerm_public_ip" "jenkins_public_ip" {
-  name = "jenkins_nic_public"
-  resource_group_name = azurerm_network_interface.jenkins_nic_public.resource_group_name
-}
+# data "azurerm_public_ip" "jenkins_public_ip" {
+#   name = "jenkins_nic_public"
+#   resource_group_name = "Nathanel-Candidate"
+# }
 
 # # Retrieve Jenkins credentials from Key Vault
 # data "azurerm_key_vault_secret" "jenkins_credentials" {
