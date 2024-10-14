@@ -296,6 +296,11 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
     version   = "latest"
   }
 
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.jenkins_identity.id]
+  }
+
   # Embedded Jenkins installation and credential storage script
   custom_data = base64encode(<<-EOT
     #!/bin/bash
@@ -340,6 +345,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   )
 
   depends_on = [azurerm_key_vault.main,
+  azurerm_user_assigned_identity.jenkins_identity,
   azurerm_network_interface_security_group_association.jenkins_nsg_assoc]
 }
 
@@ -714,4 +720,25 @@ resource "azurerm_role_assignment" "external_dns_contributor" {
   scope                = data.azurerm_resource_group.main.id
   role_definition_name = "Contributor"
   principal_id         = azurerm_user_assigned_identity.external_dns.principal_id
+}
+
+## Service Principal in your Terraform script and assign it the necessary role to access the Key Vault.
+resource "azurerm_key_vault_access_policy" "jenkins_vm" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = azurerm_user_assigned_identity.jenkins_identity.client_id
+
+  secret_permissions = [
+    "Get",
+    "Set",
+    "List",
+    "Delete",
+    "Restore"
+  ]
+}
+
+resource "azurerm_user_assigned_identity" "jenkins_identity" {
+  name                = "jenkins-identity"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
 }
