@@ -17,6 +17,11 @@ data "local_file" "cert_manager" {
   depends_on = [null_resource.download_cert_manager]
 }
 
+data "azurerm_public_ip" "jenkins_public_ip" {
+  name = "vm-public-ip"
+  resource_group_name = azurerm_network_interface.jenkins_nic_public.resource_group_name
+}
+
 # # Retrieve Jenkins credentials from Key Vault
 # data "azurerm_key_vault_secret" "jenkins_credentials" {
 #   for_each = toset(["admin-user", "api-token"])
