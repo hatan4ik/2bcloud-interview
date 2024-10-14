@@ -109,7 +109,8 @@ resource "azurerm_network_security_group" "vm_nsg" {
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
-  security_rule {
+  security_rule [
+ {
     name                       = "AllowInternetOutbound"
     priority                   = 100
     direction                  = "Outbound"
@@ -119,7 +120,7 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "*"
     source_address_prefix      = "*"
     destination_address_prefix = "Internet"
-  }
+  },
 
   security_rule {
     name                       = "SSH"
@@ -131,7 +132,7 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "22"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  }
+  },
   security_rule {
     name                       = "Jenkins"
     priority                   = 1002
@@ -142,7 +143,7 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "8080"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-}
+  },
   security_rule {
     name                       = "HTTP"
     priority                   = 1003
@@ -153,7 +154,7 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_port_range     = "80"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
-  }
+  },
   security_rule {
     name                       = "HTTPS"
     priority                   = 1004
@@ -165,8 +166,8 @@ resource "azurerm_network_security_group" "vm_nsg" {
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
+ ]
 }
-
 resource "azurerm_network_security_group" "pe_nsg" {
   name                = "pe-nsg"
   location            = data.azurerm_resource_group.main.location
