@@ -519,15 +519,6 @@ resource "null_resource" "download_cert_manager" {
   }
 }
 
-data "local_file" "cert_manager_crds" {
-  filename = "${path.module}/cert-manager.crds.yaml"
-  depends_on = [null_resource.download_cert_manager_crds]
-}
-
-data "local_file" "cert_manager" {
-  filename = "${path.module}/cert-manager.yaml"
-  depends_on = [null_resource.download_cert_manager]
-}
 
 resource "kubectl_manifest" "cert_manager_crds" {
   yaml_body = data.local_file.cert_manager_crds.content
