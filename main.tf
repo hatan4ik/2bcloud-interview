@@ -33,6 +33,25 @@ resource "azurerm_network_interface_security_group_association" "jenkins_nsg_ass
   network_security_group_id = azurerm_network_security_group.vm_nsg.id
 }
 
+#Associate Public NIC to Jenkins VM
+resource "azurerm_network_interface" "jenkins_nic_public" {
+  name                = "jenkins-nic-public"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+
+  ip_configuration {
+    name                          = "public"
+    subnet_id                     = azurerm_subnet.vm_subnet.id
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+#Associate Public NSG with Public NIC
+resource "azurerm_network_interface_security_group_association" "jenkins_public_nsg_assoc" {
+  network_interface_id      = azurerm_network_interface.jenkins_nic_public.id
+  network_security_group_id = azurerm_network_security_group.vm_nsg.id
+}
+
 # Storage Account
 resource "azurerm_storage_account" "main" {
   name                     = "mystorageaccount${random_string.suffix.result}"
@@ -56,7 +75,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   admin_username      = "adminuser"
   network_interface_ids = [
     azurerm_network_interface.jenkins_nic.id,
-    azurerm_public_ip.jenkins_public_ip.id
+    azurerm_network_interface.jenkins_nic_public.id
   ]
 
   admin_ssh_key {
@@ -383,14 +402,6 @@ resource "azurerm_public_ip" "ingress_ip" {
   sku                 = "Standard"
 }
 
-# Public IP for Jenkins VM (if not already present)
-resource "azurerm_public_ip" "jenkins_public_ip" {
-  name                = "jenkins-public-ip"
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-}
 
 # resource "helm_release" "nginx_ingress" {
 #   name       = "nginx-ingress"
