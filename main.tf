@@ -1,11 +1,3 @@
-# Data source for current client configuration
-data "azurerm_client_config" "current" {}
-
-##Resource Group (assuming it already exists)
-data "azurerm_resource_group" "main" {
-  name = "Nathanel-Candidate"
-}
-
 # Define the resource group:
 # **Subscription is not allowing to create a new resource groups at all.
 # resource "azurerm_resource_group" "main" {
