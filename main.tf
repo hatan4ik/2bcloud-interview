@@ -148,6 +148,19 @@ resource "azurerm_network_security_group" "vm_nsg" {
     destination_address_prefix = "*"
   }
 }
+# Add an inbound rule to allow HTTP (port 80) traffic
+resource "azurerm_network_security_group_rule" "jenkins_http_rule" {
+  name                       = "AllowHTTP"
+  priority                   = 1002
+  direction                  = "Inbound"
+  access                     = "Allow"
+  protocol                   = "Tcp"
+  source_port_range          = "*"
+  destination_port_range     = "80"
+  source_address_prefix      = "*" 
+  destination_address_prefix = "*"
+  network_security_group_id  = azurerm_network_security_group.vm_nsg.id 
+}
 
 resource "azurerm_network_security_group" "pe_nsg" {
   name                = "pe-nsg"
@@ -486,26 +499,6 @@ resource "azurerm_private_dns_a_record" "keyvault" {
   records             = [azurerm_private_endpoint.keyvault.private_service_connection[0].private_ip_address]
 }
 
-# Output values
-output "jenkins_vm_private_ip" {
-  value = azurerm_network_interface.jenkins_nic.private_ip_address
-}
-
-output "aks_cluster_name" {
-  value = azurerm_kubernetes_cluster.aks.name
-}
-
-output "acr_login_server" {
-  value = azurerm_container_registry.acr.login_server
-}
-
-output "key_vault_name" {
-  value = azurerm_key_vault.main.name
-}
-
-output "storage_account_name" {
-  value = azurerm_storage_account.main.name
-}
 
 resource "null_resource" "download_cert_manager_crds" {
   provisioner "local-exec" {
@@ -624,10 +617,12 @@ resource "azurerm_public_ip" "jenkins_public_ip" {
   sku                 = "Standard"
 }
 
-# Output the public IP for Jenkins
-output "jenkins_public_ip" {
-  value       = azurerm_public_ip.jenkins_public_ip.ip_address
-  description = "Jenkins Public IP"
+# Associate Public IP with Jenkins NIC
+resource "azurerm_network_interface_ip_configuration" "jenkins_public_ip_config" {
+  name                          = "public"
+  network_interface_id           = azurerm_network_interface.jenkins_nic.id
+  public_ip_address_id          = azurerm_public_ip.jenkins_public_ip.id
+  private_ip_address_allocation = "Dynamic"
 }
 
 # resource "helm_release" "nginx_ingress" {
