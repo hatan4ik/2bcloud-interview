@@ -18,7 +18,7 @@ data "local_file" "cert_manager" {
 }
 
 data "azurerm_public_ip" "jenkins_public_ip" {
-  name = "vm-public-ip"
+  name = "jenkins_nic_public"
   resource_group_name = azurerm_network_interface.jenkins_nic_public.resource_group_name
 }
 
