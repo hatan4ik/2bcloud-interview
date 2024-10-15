@@ -375,7 +375,7 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
 
   settings = <<SETTINGS
     {
-        "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/main/jenkins-setup.sh"],
+        "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/refs/heads/main/milkyway/jenkins_setup.sh"],
         "commandToExecute": "bash jenkins-setup.sh ${azurerm_container_registry.acr.login_server} ${azuread_service_principal.jenkins_sp.application_id} ${azuread_service_principal_password.jenkins_sp_password.value} ${azurerm_kubernetes_cluster.aks.name} ${data.azurerm_resource_group.main.name}"
     }
 SETTINGS
