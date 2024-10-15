@@ -364,6 +364,13 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
         "commandToExecute": "bash jenkins-setup.sh ${azurerm_container_registry.acr.login_server} ${azuread_service_principal.jenkins_sp.application_id} ${azuread_service_principal_password.jenkins_sp_password.value} ${azurerm_kubernetes_cluster.aks.name} ${azurerm_resource_group.rg.name}"
     }
 SETTINGS
+  depends_on = [
+    azurerm_linux_virtual_machine.jenkins,
+    azurerm_container_registry.acr,
+    azuread_service_principal.jenkins_sp,
+    azurerm_kubernetes_cluster.aks
+  ]
+
 }
 
 # Install cert-manager

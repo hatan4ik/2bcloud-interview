@@ -1,0 +1,57 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@2.40">
+  <actions/>
+  <description>Pipeline for building and deploying the application</description>
+  <keepDependencies>false</keepDependencies>
+  <properties/>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@2.87">
+    <script>
+pipeline {
+    agent any
+    
+    environment {
+        GIT_REPO = '${git_repo_url}'
+        ACR_SERVER = '${acr_login_server}'
+        ACR_CREDENTIAL_ID = 'acr-credentials'
+        AKS_RESOURCE_GROUP = '${aks_resource_group}'
+        AKS_CLUSTER_NAME = '${aks_cluster_name}'
+        AZURE_CREDENTIAL_ID = 'azure-credentials'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: env.GIT_REPO
+            }
+        }
+        
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry("https://${env.ACR_SERVER}", env.ACR_CREDENTIAL_ID) {
+                        def appImage = docker.build("${env.ACR_SERVER}/myapp:${env.BUILD_NUMBER}")
+                        appImage.push()
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to AKS') {
+            steps {
+                withCredentials([azureServicePrincipal(env.AZURE_CREDENTIAL_ID)]) {
+                    sh '''
+                        az login --service-principal -u $AZURE_CLIENT_ID -p $AZURE_CLIENT_SECRET -t $AZURE_TENANT_ID
+                        az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME
+                        kubectl set image deployment/myapp myapp=${ACR_SERVER}/myapp:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+    }
+}
+    </script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
