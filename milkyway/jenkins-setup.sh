@@ -18,22 +18,22 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 sudo apt-get update
 
 # Install Java (required for Jenkins)
-    apt-get install -y openjdk-11-jdk
+ sudo   apt-get install -y openjdk-11-jdk
 
     # Install Jenkins
-    wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | apt-key add -
-    sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
-    apt-get update
-    apt-get install -y jenkins
+ sudo  wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | apt-key add -
+ sudo  sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+ sudo  apt-get update
+ sudo  apt-get install -y jenkins
 
     # Start and enable Jenkins
-    systemctl enable jenkins
-    systemctl start jenkins
+ sudo   systemctl enable jenkins
+ sudo   systemctl start jenkins
 
     # Wait for Jenkins to start up
     sleep 60
 # Install Jenkins plugins
-jenkins-plugin-cli --plugins workflow-aggregator:2.6 git:4.7.1 docker-workflow:1.26 azure-credentials:1.8.1
+sudo jenkins-plugin-cli --plugins workflow-aggregator:2.6 git:4.7.1 docker-workflow:1.26 azure-credentials:1.8.1
 
 # Configure Azure credentials
 jenkins_url="http://localhost:8080"
