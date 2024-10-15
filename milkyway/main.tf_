@@ -17,35 +17,127 @@ data "azurerm_resource_group" "main" {
 
 # Virtual Network
 resource "azurerm_virtual_network" "vnet" {
-  name                = var.vnet_name
-  address_space       = [var.vnet_address_space]
+  name                = "my-vnet"
+  address_space       = ["10.0.0.0/16"]
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
-# Subnets
-module "subnets" {
-  source = "./modules/subnets"
-
-  resource_group_name = data.azurerm_resource_group.main.name
-  vnet_name           = azurerm_virtual_network.vnet.name
-  subnets             = var.subnets
+# Subnet for Jenkins VM
+resource "azurerm_subnet" "jenkins_subnet" {
+  name                 = "jenkins-subnet"
+  resource_group_name  = data.azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
 }
 
-# Network Security Groups
-module "network_security_groups" {
-  source = "./modules/network_security_groups"
+# Subnet for AKS
+resource "azurerm_subnet" "aks_subnet" {
+  name                 = "aks-subnet"
+  resource_group_name  = data.azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.2.0/24"]
+}
 
-  resource_group_name = data.azurerm_resource_group.main.name
+# Subnet for ACR
+resource "azurerm_subnet" "acr_subnet" {
+  name                 = "acr-subnet"
+  resource_group_name  = data.azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.3.0/24"]
+  service_endpoints    = ["Microsoft.ContainerRegistry"]
+}
+
+# NSG for Jenkins VM
+resource "azurerm_network_security_group" "jenkins_nsg" {
+  name                = "jenkins-nsg"
   location            = data.azurerm_resource_group.main.location
-  nsgs                = var.nsgs
+  resource_group_name = data.azurerm_resource_group.main.name
+
+  security_rule {
+    name                       = "allow-ssh"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "allow-http"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8080"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+# NSG for AKS
+resource "azurerm_network_security_group" "aks_nsg" {
+  name                = "aks-nsg"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+
+  security_rule {
+    name                       = "allow-http"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "allow-https"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
 }
 
 # Associate NSGs with subnets
-resource "azurerm_subnet_network_security_group_association" "nsg_associations" {
-  for_each                  = { for k, v in var.subnets : k => v if lookup(var.nsgs, k, null) != null }
-  subnet_id                 = module.subnets.subnet_ids[each.key]
-  network_security_group_id = module.network_security_groups.nsg_ids[each.key]
+resource "azurerm_subnet_network_security_group_association" "jenkins_nsg_association" {
+  subnet_id                 = azurerm_subnet.jenkins_subnet.id
+  network_security_group_id = azurerm_network_security_group.jenkins_nsg.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "aks_nsg_association" {
+  subnet_id                 = azurerm_subnet.aks_subnet.id
+  network_security_group_id = azurerm_network_security_group.aks_nsg.id
+}
+
+# Route table for AKS
+resource "azurerm_route_table" "aks_route_table" {
+  name                = "aks-route-table"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+
+  route {
+    name                   = "internet"
+    address_prefix         = "0.0.0.0/0"
+    next_hop_type          = "Internet"
+  }
+}
+
+# Associate route table with AKS subnet
+resource "azurerm_subnet_route_table_association" "aks_route_table_association" {
+  subnet_id      = azurerm_subnet.aks_subnet.id
+  route_table_id = azurerm_route_table.aks_route_table.id
 }
 
 # Random string for unique naming
@@ -334,239 +426,3 @@ output "app_url" {
   value = "https://myapp.example.com"
 }
 
-# Service principal for Jenkins
-resource "azuread_application" "jenkins_sp" {
-  display_name = "jenkins-service-principal"
-}
-
-
-# Create Azure AD Application
-resource "azuread_application" "jenkins_app" {
-  display_name = "Jenkins-ServicePrincipal"
-}
-
-# Create Service Principal
-resource "azuread_service_principal" "jenkins_sp" {
-  #application_id = azuread_application.jenkins_app.application_id
-  client_id = data.azurerm_client_config.current.client_id
-}
-
-# Create Service Principal password
-resource "azuread_service_principal_password" "jenkins_sp_password" {
-  service_principal_id = azuread_service_principal.jenkins_sp.id
-}
-
-# Grant Jenkins SP contributor access to the resource group
-resource "azurerm_role_assignment" "jenkins_rg_contributor" {
-  principal_id         = azuread_service_principal.jenkins_sp.id
-  role_definition_name = "Contributor"
-  scope                = data.azurerm_resource_group.main.id
-}
-
-# Grant Jenkins SP AcrPush access to ACR
-resource "azurerm_role_assignment" "jenkins_acr_push" {
-  principal_id         = azuread_service_principal.jenkins_sp.id
-  role_definition_name = "AcrPush"
-  scope                = azurerm_container_registry.acr.id
-}
-
-# Store Jenkins SP credentials in Key Vault
-resource "azurerm_key_vault_secret" "jenkins_sp_id" {
-  name         = "jenkins-sp-id"
-  value        = azuread_application.jenkins_app.client_id
-  key_vault_id = azurerm_key_vault.kv.id
-}
-
-resource "azurerm_key_vault_secret" "jenkins_sp_secret" {
-  name         = "jenkins-sp-secret"
-  value        = azuread_service_principal_password.jenkins_sp_password.value
-  key_vault_id = azurerm_key_vault.kv.id
-}
-# Install NGINX Ingress Controller
-resource "helm_release" "nginx_ingress" {
-  name             = "nginx-ingress"
-  repository       = "https://kubernetes.github.io/ingress-nginx"
-  chart            = "ingress-nginx"
-  namespace        = "ingress-nginx"
-  create_namespace = true
-
-  set {
-    name  = "controller.service.loadBalancerIP"
-    value = azurerm_public_ip.ingress_public_ip.ip_address
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
-}
-# Install cert-manager
-resource "helm_release" "cert_manager" {
-  name             = "cert-manager"
-  repository       = "https://charts.jetstack.io"
-  chart            = "cert-manager"
-  namespace        = "cert-manager"
-  create_namespace = true
-
-  set {
-    name  = "installCRDs"
-    value = "true"
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks, azurerm_linux_virtual_machine.jenkins]
-}
-
-# Install Secrets Store CSI Driver
-resource "helm_release" "csi_secrets_store_driver" {
-  name             = "csi-secrets-store"
-  repository       = "https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts"
-  chart            = "secrets-store-csi-driver"
-  namespace        = "kube-system"
-  create_namespace = false
-
-  set {
-    name  = "syncSecret.enabled"
-    value = "true"
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks]
-}
-
-# Install Azure Key Vault Provider for Secrets Store CSI Driver
-resource "helm_release" "csi_secrets_store_provider_azure" {
-  name             = "csi-secrets-store-provider-azure"
-  repository       = "https://raw.githubusercontent.com/Azure/secrets-store-csi-driver-provider-azure/master/charts"
-  chart            = "csi-secrets-store-provider-azure"
-  namespace        = "kube-system"
-  create_namespace = false
-
-  set {
-    name  = "secrets-store-csi-driver.syncSecret.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "secrets-store-csi-driver.enableSecretRotation"
-    value = "true"
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks, helm_release.csi_secrets_store_driver]
-}
-
-# Deploy application using Helm
-resource "helm_release" "myapp" {
-  name       = "myapp"
-  chart      = "./helm-chart"
-  namespace  = "default"
-  create_namespace = true
-  max_history = 5
-  timeout    = 600
-
-  set {
-    name  = "image.repository"
-    value = "${azurerm_container_registry.acr.login_server}/myapp"
-  }
-
-  set {
-    name  = "image.tag"
-    value = "latest"  # Consider using a specific version in production
-  }
-
-  set {
-    name  = "image.pullPolicy"
-    value = "Always"
-  }
-
-  set {
-    name  = "ingress.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "ingress.className"
-    value = "nginx"
-  }
-
-  set {
-    name  = "ingress.annotations.kubernetes\\.io/ingress\\.class"
-    value = "nginx"
-  }
-
-  set {
-    name  = "ingress.annotations.cert-manager\\.io/cluster-issuer"
-    value = "letsencrypt-prod"
-  }
-
-  set {
-    name  = "ingress.hosts[0].host"
-    value = "myapp.example.com"
-  }
-
-  set {
-    name  = "ingress.hosts[0].paths[0].path"
-    value = "/"
-  }
-
-  set {
-    name  = "ingress.hosts[0].paths[0].pathType"
-    value = "Prefix"
-  }
-
-  set {
-    name  = "ingress.tls[0].secretName"
-    value = "myapp-tls"
-  }
-
-  set {
-    name  = "ingress.tls[0].hosts[0]"
-    value = "myapp.example.com"
-  }
-
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-
-  set {
-    name  = "serviceAccount.annotations.azure\\.workload\\.identity/client-id"
-    value = azurerm_user_assigned_identity.aks_pod_identity.client_id
-  }
-
-  set {
-    name  = "keyVault.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "keyVault.name"
-    value = azurerm_key_vault.kv.name
-  }
-
-  set {
-    name  = "keyVault.secretName"
-    value = azurerm_key_vault_secret.app_secret.name
-  }
-
-  set {
-    name  = "keyVault.tenantId"
-    value = data.azurerm_client_config.current.tenant_id
-  }
-
-  set {
-    name  = "podIdentity.enabled"
-    value = "true"
-  }
-
-  set {
-    name  = "podIdentity.userAssignedIdentityName"
-    value = azurerm_user_assigned_identity.aks_pod_identity.name
-  }
-
-  depends_on = [
-    azurerm_kubernetes_cluster.aks,
-    azurerm_container_registry.acr,
-    azurerm_key_vault_secret.app_secret,
-    helm_release.cert_manager,
-    helm_release.nginx_ingress,
-    helm_release.csi_secrets_store_provider_azure,
-    azurerm_role_assignment.aks_identity_operator,
-    azurerm_user_assigned_identity.aks_pod_identity
-  ]
-}
