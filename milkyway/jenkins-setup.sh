@@ -3,7 +3,7 @@
 # Install Azure CLI
 sudo apt-get update
 
-apt-get install -y docker.io git jq curl
+sudo apt-get install -y docker.io git jq curl
 
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
