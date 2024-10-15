@@ -222,7 +222,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  size                = "Standard_B2ps_v2"
+  size                = "Standard_D4s_v3"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
   network_interface_ids = [
