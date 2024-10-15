@@ -241,8 +241,8 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
 
   source_image_reference {
     publisher = "Canonical"
-    offer     = "UbuntuServer"
-    sku       = "19_04-gen2"
+    offer     = "0001-com-ubuntu-server-focal"
+    sku       = "20_04-lts"
     version   = "latest"
   }
 
@@ -334,7 +334,7 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
   virtual_machine_id   = azurerm_linux_virtual_machine.jenkins.id
   publisher            = "Microsoft.Azure.Extensions"
   type                 = "CustomScript"
-  type_handler_version = "2.0"
+  type_handler_version = "2.1"
 
   settings = <<SETTINGS
     {

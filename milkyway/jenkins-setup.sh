@@ -1,6 +1,10 @@
 #!/bin/bash
 
 # Install Azure CLI
+sudo apt-get update
+
+apt-get install -y docker.io git jq curl
+
 curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
 
 # Install kubectl
@@ -10,9 +14,8 @@ sudo az aks install-cli
 sudo apt-get update
 sudo apt-get install -y apt-transport-https ca-certificates curl software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+#sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 sudo apt-get update
-sudo apt-get install -y docker-ce
 
 # Install Jenkins plugins
 jenkins-plugin-cli --plugins workflow-aggregator:2.6 git:4.7.1 docker-workflow:1.26 azure-credentials:1.8.1
