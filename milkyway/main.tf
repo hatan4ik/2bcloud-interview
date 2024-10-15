@@ -222,7 +222,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  size                = "Standard_B2s"
+  size                = "Standard_A2_v2"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
   network_interface_ids = [
@@ -235,7 +235,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
 
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "Premium_LRS"
+    storage_account_type = "StandardSSD_LRS"
   }
 
   source_image_reference {
@@ -343,7 +343,7 @@ SETTINGS
   depends_on = [
     azurerm_linux_virtual_machine.jenkins,
     azurerm_container_registry.acr,
-    azuread_service_principal.jenkins_sp,
+    #azuread_service_principal.jenkins_sp,
     azurerm_kubernetes_cluster.aks
   ]
 
