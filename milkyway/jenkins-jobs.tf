@@ -1,11 +1,11 @@
-# # Add this to the provider block at the top of the file
+# Add this to the provider block at the top of the file
 # provider "jenkins" {
 #   server_url = "http://${azurerm_public_ip.jenkins_public_ip.ip_address}:8080"
 #   username   = "admin"
 #   password   = azurerm_key_vault_secret.jenkins_admin_password.value
 # }
 
-# # Create Jenkins admin password and store in Key Vault
+# Create Jenkins admin password and store in Key Vault
 # resource "random_password" "jenkins_admin_password" {
 #   length  = 16
 #   special = true

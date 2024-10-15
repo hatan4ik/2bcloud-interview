@@ -18,7 +18,7 @@ data "azurerm_resource_group" "main" {
 resource "azurerm_virtual_network" "vnet" {
   name                = "my-vnet"
   address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
@@ -50,7 +50,7 @@ resource "azurerm_subnet" "acr_subnet" {
 # NSG for Jenkins VM
 resource "azurerm_network_security_group" "jenkins_nsg" {
   name                = "jenkins-nsg"
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
   security_rule {
@@ -81,7 +81,7 @@ resource "azurerm_network_security_group" "jenkins_nsg" {
 # NSG for AKS
 resource "azurerm_network_security_group" "aks_nsg" {
   name                = "aks-nsg"
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
   security_rule {
@@ -123,7 +123,7 @@ resource "azurerm_subnet_network_security_group_association" "aks_nsg_associatio
 # Route table for AKS
 resource "azurerm_route_table" "aks_route_table" {
   name                = "aks-route-table"
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
   route {
@@ -149,7 +149,7 @@ resource "random_string" "random" {
 # Key Vault
 resource "azurerm_key_vault" "kv" {
   name                        = "my-key-vault-${random_string.random.result}"
-  location                    = azurerm_resource_group.rg.location
+  location                    = data.azurerm_resource_group.main.location
   resource_group_name         = data.azurerm_resource_group.main.name
   enabled_for_disk_encryption = true
   tenant_id                   = data.azurerm_client_config.current.tenant_id
@@ -198,7 +198,7 @@ resource "azurerm_key_vault_secret" "vm_password" {
 # Network interface for Jenkins VM
 resource "azurerm_network_interface" "jenkins_nic" {
   name                = "jenkins-nic"
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
 
   ip_configuration {
@@ -213,7 +213,7 @@ resource "azurerm_network_interface" "jenkins_nic" {
 resource "azurerm_public_ip" "jenkins_public_ip" {
   name                = "jenkins-public-ip"
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   allocation_method   = "Static"
 }
 
@@ -221,7 +221,7 @@ resource "azurerm_public_ip" "jenkins_public_ip" {
 resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   size                = "Standard_DS1_v2"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
@@ -247,16 +247,16 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
 # AKS Cluster
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "my-aks-cluster"
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
+  kubernetes_version  = "1.30.4"
+  sku_tier            = "Standard"
   dns_prefix          = "myakscluster"
 
   default_node_pool {
     name           = "default"
     node_count     = 1
     vm_size        = "Standard_D2s_v3"
-    kubernetes_version  = "1.30.4"
-    sku_tier            = "Standard"
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
   }
 
@@ -269,16 +269,16 @@ resource "azurerm_kubernetes_cluster" "aks" {
     load_balancer_sku = "standard"
   }
 
-  addon_profile {
-    oms_agent {
-      enabled = false
-    }
-    azure_policy {
-      enabled = true
-    }
-  }
+  # addon_profile {
+  #   oms_agent {
+  #     enabled = false
+  #   }
+  #   azure_policy {
+  #     enabled = true
+  #   }
+  #}
 
-  sku_tier = "Standard"  # Required for ACR integration
+# Required for ACR integration
 
   key_vault_secrets_provider {
     secret_rotation_enabled  = true
@@ -290,8 +290,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
 resource "azurerm_container_registry" "acr" {
   name                = "myacrregistry${random_string.random.result}"
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = azurerm_resource_group.rg.location
-  sku                 = "Premium"
+  location            = data.azurerm_resource_group.main.location
+  sku                 = "Standard"
   admin_enabled       = true
 
   network_rule_set {
@@ -300,10 +300,10 @@ resource "azurerm_container_registry" "acr" {
       action   = "Allow"
       ip_range = "0.0.0.0/0"  # Be cautious with this setting in production
     }
-    virtual_network {
-      action    = "Allow"
-      subnet_id = azurerm_subnet.acr_subnet.id
-    }
+    # virtual_network {
+    #   action    = "Allow"
+    #   subnet_id = azurerm_subnet.acr_subnet.id
+    # }
   }
 }
 
@@ -320,10 +320,19 @@ resource "azuread_application" "jenkins_sp" {
   display_name = "jenkins-service-principal"
 }
 
-resource "azuread_service_principal" "jenkins_sp" {
-  application_id = azuread_application.jenkins_sp.application_id
+
+# Create Azure AD Application
+resource "azuread_application" "jenkins_app" {
+  display_name = "Jenkins-ServicePrincipal"
 }
 
+# Create Service Principal
+resource "azuread_service_principal" "jenkins_sp" {
+  #application_id = azuread_application.jenkins_app.application_id
+  client_id = data.azurerm_client_config.current.client_id
+}
+
+# Create Service Principal password
 resource "azuread_service_principal_password" "jenkins_sp_password" {
   service_principal_id = azuread_service_principal.jenkins_sp.id
 }
@@ -332,7 +341,7 @@ resource "azuread_service_principal_password" "jenkins_sp_password" {
 resource "azurerm_role_assignment" "jenkins_rg_contributor" {
   principal_id         = azuread_service_principal.jenkins_sp.id
   role_definition_name = "Contributor"
-  scope                = azurerm_resource_group.rg.id
+  scope                = data.azurerm_resource_group.main.id
 }
 
 # Grant Jenkins SP AcrPush access to ACR
@@ -345,7 +354,7 @@ resource "azurerm_role_assignment" "jenkins_acr_push" {
 # Store Jenkins SP credentials in Key Vault
 resource "azurerm_key_vault_secret" "jenkins_sp_id" {
   name         = "jenkins-sp-id"
-  value        = azuread_service_principal.jenkins_sp.application_id
+  value        = azuread_application.jenkins_app.client_id
   key_vault_id = azurerm_key_vault.kv.id
 }
 
@@ -378,7 +387,7 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
   settings = <<SETTINGS
     {
         "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/refs/heads/main/milkyway/jenkins_setup.sh"],
-        "commandToExecute": "bash jenkins-setup.sh ${azurerm_container_registry.acr.login_server} ${azuread_service_principal.jenkins_sp.application_id} ${azuread_service_principal_password.jenkins_sp_password.value} ${azurerm_kubernetes_cluster.aks.name} ${data.azurerm_resource_group.main.name}"
+        "commandToExecute": "bash jenkins-setup.sh ${azurerm_container_registry.acr.login_server} ${azuread_service_principal.jenkins_sp.id} ${azuread_service_principal_password.jenkins_sp_password.value} ${azurerm_kubernetes_cluster.aks.name} ${data.azurerm_resource_group.main.name}"
     }
 SETTINGS
   depends_on = [
@@ -410,7 +419,7 @@ resource "helm_release" "cert_manager" {
 resource "azurerm_public_ip" "ingress_public_ip" {
   name                = "ingress-public-ip"
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   allocation_method   = "Static"
   sku                 = "Standard"
 }
@@ -479,7 +488,7 @@ resource "helm_release" "csi_secrets_store_provider_azure" {
 # Create a user-assigned managed identity for pod identity
 resource "azurerm_user_assigned_identity" "aks_pod_identity" {
   resource_group_name = data.azurerm_resource_group.main.name
-  location            = azurerm_resource_group.rg.location
+  location            = data.azurerm_resource_group.main.location
   name                = "aks-pod-identity"
 }
 

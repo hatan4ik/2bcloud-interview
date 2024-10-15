@@ -9,6 +9,7 @@ provider "azurerm" {
   use_cli = true
 }
 
+provider "azuread" {}
 
 provider "kubernetes" {
   host                   = azurerm_kubernetes_cluster.aks.kube_config.0.host
