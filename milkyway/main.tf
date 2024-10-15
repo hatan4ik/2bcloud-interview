@@ -6,12 +6,13 @@ data "azurerm_client_config" "current" {}
 # Data declaration for resource group
 data "azurerm_resource_group" "main" {
   name = "Nathanel-Candidate"
+  #depends_on = [ azurerm_resource_group.rg ]
 }
 
 # Resource group
 # resource "azurerm_resource_group" "rg" {
-#   name     = "my-resource-group"
-#   location = "East US"
+#   name     = "Nathanel-Candidate"
+#   location = "West Europe"
 # }
 
 # Virtual Network
@@ -222,7 +223,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  size                = "Standard_A2_v2"
+  size                = "Standard_DS2_v2"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
   network_interface_ids = [
@@ -235,17 +236,17 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
 
   os_disk {
     caching              = "ReadWrite"
-    storage_account_type = "StandardSSD_LRS"
+    storage_account_type = "Standard_LRS"
   }
 
   source_image_reference {
     publisher = "Canonical"
     offer     = "UbuntuServer"
-    sku       = "18.04-LTS"
+    sku       = "19_04-gen2"
     version   = "latest"
   }
 
-  custom_data = base64encode(file("jenkins_setup.sh"))
+  custom_data = base64encode(file("jenkins-setup.sh"))
 }
 
 # AKS Cluster
@@ -260,8 +261,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
   default_node_pool {
     name           = "default"
     node_count     = 1
-    vm_size        = "standard_b2ps_v2"
+    vm_size        = "Standard_DS2_v2"
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
+    temporary_name_for_rotation = "tempnodepool"
   }
 
   identity {
@@ -336,7 +338,7 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
 
   settings = <<SETTINGS
     {
-        "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/refs/heads/main/milkyway/jenkins_setup.sh"],
+        "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/refs/heads/main/milkyway/jenkins-setup.sh"],
         "commandToExecute": "bash jenkins-setup.sh"
     }
 SETTINGS
