@@ -18,7 +18,7 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 sudo apt-get update
 
 # Install Java (required for Jenkins)
- sudo   apt-get install -y openjdk-11-jdk
+sudo   apt-get install -y openjdk-11-jdk
 
     # Install Jenkins
 curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee \
