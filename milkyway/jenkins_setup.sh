@@ -21,21 +21,30 @@ jenkins-plugin-cli --plugins workflow-aggregator:2.6 git:4.7.1 docker-workflow:1
 jenkins_url="http://localhost:8080"
 admin_password=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
 
+# Create Jenkins job
+jenkins_url="http://localhost:8080"
+admin_password=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
+
+# Create credential for GitHub if needed
 curl -X POST "${jenkins_url}/credentials/store/system/domain/_/createCredentials" \
   --user "admin:${admin_password}" \
   --data-urlencode 'json={
     "": "0",
     "credentials": {
       "scope": "GLOBAL",
-      "id": "azure-credentials",
-      "description": "Azure Service Principal",
-      "subscriptionId": "'$4'",
-      "clientId": "'$2'",
-      "clientSecret": "'$3'",
-      "tenantId": "'$5'",
-      "$class": "com.microsoft.azure.util.AzureCredentials"
+      "id": "github-credentials",
+      "username": "your-github-username",
+      "password": "your-github-password-or-token",
+      "description": "GitHub Credentials",
+      "$class": "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"
     }
   }'
+
+# Create the pipeline job
+curl -X POST "${jenkins_url}/createItem?name=app-deployment-pipeline" \
+  --user "admin:${admin_password}" \
+  --header "Content-Type: application/xml" \
+  --data-binary @./jenkins-pipeline.xml
 
 # Configure ACR credentials
 curl -X POST "${jenkins_url}/credentials/store/system/domain/_/createCredentials" \
