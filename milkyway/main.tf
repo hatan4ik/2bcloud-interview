@@ -255,6 +255,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
     name           = "default"
     node_count     = 1
     vm_size        = "Standard_D2s_v3"
+    kubernetes_version  = "1.30.4"
+    sku_tier            = "Standard"
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
   }
 
