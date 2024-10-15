@@ -222,7 +222,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  size                = "Standard_DS1_v2"
+  size                = "Standard_D11_v2"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
   network_interface_ids = [
@@ -269,8 +269,10 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 
   network_profile {
-    network_plugin    = "azure"
-    load_balancer_sku = "standard"
+    network_plugin     = "azure"
+    network_policy     = "calico"
+    service_cidr       = "172.16.0.0/16"  # Non-overlapping CIDR
+    dns_service_ip     = "172.16.0.10"    # Must be within service_cidr range
   }
 
   # addon_profile {
@@ -299,15 +301,7 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = true
 
   network_rule_set {
-    default_action = "Deny"
-    ip_rule {
-      action   = "Allow"
-      ip_range = "0.0.0.0/0"  # Be cautious with this setting in production
-    }
-    # virtual_network {
-    #   action    = "Allow"
-    #   subnet_id = azurerm_subnet.acr_subnet.id
-    # }
+    default_action = "Allow"
   }
 }
 
