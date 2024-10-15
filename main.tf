@@ -481,7 +481,6 @@ resource "azurerm_role_assignment" "external_dns_contributor" {
 
 ## Service Principal in your Terraform script and assign it the necessary role to access the Key Vault.
 
-
 resource "azurerm_user_assigned_identity" "jenkins_identity" {
   name                = "jenkins-identity"
   resource_group_name = data.azurerm_resource_group.main.name
