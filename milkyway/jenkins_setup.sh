@@ -26,19 +26,19 @@ jenkins_url="http://localhost:8080"
 admin_password=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
 
 # Create credential for GitHub if needed
-curl -X POST "${jenkins_url}/credentials/store/system/domain/_/createCredentials" \
-  --user "admin:${admin_password}" \
-  --data-urlencode 'json={
-    "": "0",
-    "credentials": {
-      "scope": "GLOBAL",
-      "id": "github-credentials",
-      "username": "your-github-username",
-      "password": "your-github-password-or-token",
-      "description": "GitHub Credentials",
-      "$class": "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"
-    }
-  }'
+# curl -X POST "${jenkins_url}/credentials/store/system/domain/_/createCredentials" \
+#   --user "admin:${admin_password}" \
+#   --data-urlencode 'json={
+#     "": "0",
+#     "credentials": {
+#       "scope": "GLOBAL",
+#       "id": "github-credentials",
+#       "username": "your-github-username",
+#       "password": "your-github-password-or-token",
+#       "description": "GitHub Credentials",
+#       "$class": "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl"
+#     }
+#   }'
 
 # Create the pipeline job
 curl -X POST "${jenkins_url}/createItem?name=app-deployment-pipeline" \

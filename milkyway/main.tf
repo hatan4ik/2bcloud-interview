@@ -222,7 +222,7 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   name                = "jenkins-vm"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  size                = "Standard_D4s_v3"
+  size                = "Standard_B2s"
   admin_username      = "adminuser"
   admin_password      = azurerm_key_vault_secret.vm_password.value
   network_interface_ids = [
@@ -313,54 +313,6 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
   skip_service_principal_aad_check = true
 }
 
-# Service principal for Jenkins
-resource "azuread_application" "jenkins_sp" {
-  display_name = "jenkins-service-principal"
-}
-
-
-# Create Azure AD Application
-resource "azuread_application" "jenkins_app" {
-  display_name = "Jenkins-ServicePrincipal"
-}
-
-# Create Service Principal
-resource "azuread_service_principal" "jenkins_sp" {
-  #application_id = azuread_application.jenkins_app.application_id
-  client_id = data.azurerm_client_config.current.client_id
-}
-
-# Create Service Principal password
-resource "azuread_service_principal_password" "jenkins_sp_password" {
-  service_principal_id = azuread_service_principal.jenkins_sp.id
-}
-
-# Grant Jenkins SP contributor access to the resource group
-resource "azurerm_role_assignment" "jenkins_rg_contributor" {
-  principal_id         = azuread_service_principal.jenkins_sp.id
-  role_definition_name = "Contributor"
-  scope                = data.azurerm_resource_group.main.id
-}
-
-# Grant Jenkins SP AcrPush access to ACR
-resource "azurerm_role_assignment" "jenkins_acr_push" {
-  principal_id         = azuread_service_principal.jenkins_sp.id
-  role_definition_name = "AcrPush"
-  scope                = azurerm_container_registry.acr.id
-}
-
-# Store Jenkins SP credentials in Key Vault
-resource "azurerm_key_vault_secret" "jenkins_sp_id" {
-  name         = "jenkins-sp-id"
-  value        = azuread_application.jenkins_app.client_id
-  key_vault_id = azurerm_key_vault.kv.id
-}
-
-resource "azurerm_key_vault_secret" "jenkins_sp_secret" {
-  name         = "jenkins-sp-secret"
-  value        = azuread_service_principal_password.jenkins_sp_password.value
-  key_vault_id = azurerm_key_vault.kv.id
-}
 
 # Create Jenkins admin password and store in Key Vault
 resource "random_password" "jenkins_admin_password" {
@@ -385,7 +337,7 @@ resource "azurerm_virtual_machine_extension" "jenkins_setup" {
   settings = <<SETTINGS
     {
         "fileUris": ["https://raw.githubusercontent.com/hatan4ik/2bcloud-interview/refs/heads/main/milkyway/jenkins_setup.sh"],
-        "commandToExecute": "bash jenkins-setup.sh ${azurerm_container_registry.acr.login_server} ${azuread_service_principal.jenkins_sp.id} ${azuread_service_principal_password.jenkins_sp_password.value} ${azurerm_kubernetes_cluster.aks.name} ${data.azurerm_resource_group.main.name}"
+        "commandToExecute": "bash jenkins-setup.sh"
     }
 SETTINGS
   depends_on = [
