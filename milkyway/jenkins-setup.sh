@@ -17,6 +17,21 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
 #sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 sudo apt-get update
 
+# Install Java (required for Jenkins)
+    apt-get install -y openjdk-11-jdk
+
+    # Install Jenkins
+    wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | apt-key add -
+    sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+    apt-get update
+    apt-get install -y jenkins
+
+    # Start and enable Jenkins
+    systemctl enable jenkins
+    systemctl start jenkins
+
+    # Wait for Jenkins to start up
+    sleep 60
 # Install Jenkins plugins
 jenkins-plugin-cli --plugins workflow-aggregator:2.6 git:4.7.1 docker-workflow:1.26 azure-credentials:1.8.1
 
