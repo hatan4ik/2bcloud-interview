@@ -228,6 +228,10 @@ resource "azurerm_linux_virtual_machine" "jenkins" {
   network_interface_ids = [
     azurerm_network_interface.jenkins_nic.id,
   ]
+  admin_ssh_key {
+    username   = "adminuser"
+    public_key = file("~/.ssh/id_rsa.pub")
+  }
 
   os_disk {
     caching              = "ReadWrite"
@@ -256,7 +260,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   default_node_pool {
     name           = "default"
     node_count     = 1
-    vm_size        = "Standard_D2s_v3"
+    vm_size        = "standard_b2ps_v2"
     vnet_subnet_id = azurerm_subnet.aks_subnet.id
   }
 
@@ -291,7 +295,7 @@ resource "azurerm_container_registry" "acr" {
   name                = "myacrregistry${random_string.random.result}"
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
-  sku                 = "Standard"
+  sku                 = "Premium"
   admin_enabled       = true
 
   network_rule_set {
