@@ -67,7 +67,7 @@ admin_password=$(sudo cat /var/lib/jenkins/secrets/initialAdminPassword)
 curl -X POST "${jenkins_url}/createItem?name=app-deployment-pipeline" \
   --user "admin:${admin_password}" \
   --header "Content-Type: application/xml" \
-  --data-binary @./jenkins-pipeline.xml
+  --data-binary @jenkins-pipeline.xml
 
 # Configure ACR credentials
 curl -X POST "${jenkins_url}/credentials/store/system/domain/_/createCredentials" \
