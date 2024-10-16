@@ -113,7 +113,7 @@ resource "null_resource" "build_and_push_image" {
       # Log in to ACR using Service Principal
       az acr login --name ${azurerm_container_registry.acr.name}
       # Navigate to the directory containing the Dockerfile and package.json
-      cd ${path.module}/alphacentauri
+      cd $${path.cwd)
       docker build -t ${azurerm_container_registry.acr.login_server}/myapp:latest .
       docker push ${azurerm_container_registry.acr.login_server}/myapp:latest
     EOT
@@ -148,6 +148,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = data.azurerm_resource_group.main.location
   resource_group_name = data.azurerm_resource_group.main.name
   kubernetes_version  = "1.30.4"
+  sku_tier            = "Standard"
   dns_prefix          = "aks-${random_string.random.result}"
   default_node_pool {
     name           = "default"
