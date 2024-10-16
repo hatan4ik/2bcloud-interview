@@ -2,76 +2,84 @@
 
 set -euo pipefail
 
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to wait for Jenkins to start
+wait_for_jenkins() {
+    echo "Waiting for Jenkins to start..."
+    timeout 300 bash -c 'until curl -s -o /dev/null http://localhost:8080; do sleep 5; done'
+}
+
 # Set environment variables for Jenkins
 JENKINS_URL="http://localhost:8080"
 ADMIN_USER="admin"
-ADMIN_PASSWORD_FILE=$(cat /var/lib/jenkins/secrets/initialAdminPassword)
+JENKINS_HOME="/var/lib/jenkins"
+ADMIN_PASSWORD_FILE="$JENKINS_HOME/secrets/initialAdminPassword"
 
 # Update system packages and install dependencies
 echo "Updating system packages and installing dependencies..."
-sudo apt-get update && sudo apt-get install -y openjdk-11-jdk docker.io git jq curl apt-transport-https ca-certificates
+sudo apt-get update
+sudo apt-get install -y openjdk-11-jdk docker.io git jq curl apt-transport-https ca-certificates
 
 # Add Jenkins repository and GPG key
 echo "Adding Jenkins repository and GPG key..."
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-
-# Install and start Jenkins
-echo "Installing and starting Jenkins..."
-sudo apt-get update && sudo apt-get install -y jenkins
-sudo systemctl enable jenkins && sudo systemctl start jenkins
-
-# Wait for Jenkins to start up
-echo "Waiting for Jenkins to start..."
-timeout 300 bash -c 'until curl -s -o /dev/null http://localhost:8080; do sleep 5; done'
-
-# Retrieve Jenkins admin password
-if [ ! -f "$ADMIN_PASSWORD_FILE" ]; then
-  echo "Jenkins password file not found at: $ADMIN_PASSWORD_FILE" >&2
-  exit 1
+if ! command_exists jenkins; then
+    curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.gpg
+    echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+    sudo apt-get update
 fi
 
-ADMIN_PASSWORD=$(sudo cat "$ADMIN_PASSWORD_FILE")
+# Install Jenkins
+echo "Installing Jenkins..."
+sudo apt-get install -y jenkins
 
-# Install Jenkins plugins and generate API token
-echo "Installing Jenkins plugins and generating API token..."
-sudo jenkins-plugin-cli --plugins workflow-aggregator git docker-workflow azure-credentials
+# Ensure Jenkins is started and enabled
+sudo systemctl enable jenkins
+sudo systemctl start jenkins
+
+# Wait for Jenkins to start up
+wait_for_jenkins
+
+# Retrieve Jenkins admin password
+echo "Retrieving Jenkins admin password..."
+for i in {1..30}; do
+    if [ -f "$ADMIN_PASSWORD_FILE" ]; then
+        ADMIN_PASSWORD=$(sudo cat "$ADMIN_PASSWORD_FILE")
+        break
+    fi
+    echo "Waiting for Jenkins to generate admin password... (attempt $i/30)"
+    sleep 10
+done
+
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+    echo "Failed to retrieve Jenkins admin password" >&2
+    exit 1
+fi
+
+# Install Jenkins plugins
+echo "Installing Jenkins plugins..."
+PLUGIN_INSTALLATION_TIMEOUT=600
+sudo -u jenkins java -jar /usr/share/jenkins/jenkins-cli.jar -s $JENKINS_URL -auth $ADMIN_USER:$ADMIN_PASSWORD install-plugin workflow-aggregator git docker-workflow azure-credentials -deploy -restart
+
+# Wait for Jenkins to restart
+wait_for_jenkins
+
+# Generate API token
+echo "Generating Jenkins API token..."
 JENKINS_API_TOKEN=$(curl -s -X POST -u "$ADMIN_USER:$ADMIN_PASSWORD" \
   -H "Content-Type: application/json" \
-  -d '{"authenticityToken":"","username":"admin","password":"'"$ADMIN_PASSWORD"'","credentialDescription":"initial-token"}' \
-  "$JENKINS_URL/me/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken" | jq -r .data.token)
+  -d '{"newTokenName":"initial-token"}' \
+  "$JENKINS_URL/me/descriptorByName/jenkins.security.ApiTokenProperty/generateNewToken" | jq -r .data.tokenValue)
+
+if [ -z "$JENKINS_API_TOKEN" ]; then
+    echo "Failed to generate Jenkins API token" >&2
+    exit 1
+fi
 
 echo "Jenkins API token: $JENKINS_API_TOKEN"
-
-# Create Groovy script for additional plugin installation
-cat <<EOF | sudo tee /var/lib/jenkins/init.groovy.d/plugins.groovy > /dev/null
-import jenkins.model.*
-import hudson.model.*
-import jenkins.install.*
-
-def instance = Jenkins.getInstance()
-instance.setInstallState(InstallState.INITIAL_SETUP_COMPLETED)
-
-def pluginManager = instance.getPluginManager()
-def updateCenter = instance.getUpdateCenter()
-
-["workflow-aggregator", "git", "docker-workflow", "azure-credentials"].each { pluginName ->
-    if (!pluginManager.getPlugin(pluginName)) {
-        def plugin = updateCenter.getPlugin(pluginName)
-        if (plugin) {
-            println("Installing plugin: ${pluginName}")
-            plugin.deploy()
-        }
-    }
-}
-
-instance.save()
-EOF
-
-# Restart Jenkins and wait for it to come back up
-echo "Restarting Jenkins..."
-sudo systemctl restart jenkins
-timeout 300 bash -c 'until curl -s -o /dev/null http://localhost:8080; do sleep 5; done'
 
 # Clone repository and create pipeline job
 echo "Creating Jenkins pipeline job..."
@@ -79,8 +87,8 @@ GIT_REPO_URL="https://github.com/hatan4ik/2bcloud-interview.git"
 git clone "$GIT_REPO_URL" repo-temp
 
 if [ ! -f "repo-temp/jenkins-pipeline.xml" ]; then
-  echo "jenkins-pipeline.xml not found in the cloned repository." >&2
-  exit 1
+    echo "jenkins-pipeline.xml not found in the cloned repository." >&2
+    exit 1
 fi
 
 curl -X POST "${JENKINS_URL}/createItem?name=app-deployment-pipeline" \
