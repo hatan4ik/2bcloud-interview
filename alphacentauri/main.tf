@@ -113,7 +113,7 @@ resource "null_resource" "build_and_push_image" {
       # Log in to ACR using Service Principal
       az acr login --name ${azurerm_container_registry.acr.name}
       # Navigate to the directory containing the Dockerfile and package.json
-      cd $${path.cwd)
+      cd ${path.module}/alphacentauri
       docker build -t ${azurerm_container_registry.acr.login_server}/myapp:latest .
       docker push ${azurerm_container_registry.acr.login_server}/myapp:latest
     EOT
