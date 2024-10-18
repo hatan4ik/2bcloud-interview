@@ -98,6 +98,15 @@ resource "azurerm_key_vault_secret" "acr_sp_secret" {
   key_vault_id = azurerm_key_vault.kv.id
 }
 
+## This approach can be useful to ensure that your local kubectl configuration is updated 
+#as part of Terraform workflow, especially if you're creating or updating an AKS cluster.
+resource "null_resource" "update_kubeconfig" {
+  provisioner "local-exec" {
+    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing"
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
 
 # Build and push the image to ACR
 resource "null_resource" "build_and_push_image" {
@@ -112,6 +121,9 @@ resource "null_resource" "build_and_push_image" {
       az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant ${data.azurerm_client_config.current.tenant_id}
       # Log in to ACR using Service Principal
       az acr login --name ${azurerm_container_registry.acr.name}
+      ## AKS cluster config
+      kubectl config get-contexts
+      kubectl config use-context ${azurerm_kubernetes_cluster.aks.name}
       # Navigate to the directory containing the Dockerfile and package.json
       cd ${path.module}/alphacentauri
       docker build -t ${azurerm_container_registry.acr.login_server}/myapp:latest .
@@ -122,7 +134,8 @@ resource "null_resource" "build_and_push_image" {
   depends_on = [
     azurerm_container_registry.acr,
     azurerm_key_vault_secret.acr_sp_secret,
-    azurerm_kubernetes_cluster.aks
+    azurerm_kubernetes_cluster.aks,
+    null_resource.update_kubeconfig
   ]
 }
 
@@ -203,6 +216,10 @@ resource "helm_release" "nginx_ingress" {
   set {
     name  = "controller.service.loadBalancerIP"
     value = azurerm_public_ip.ingress_public_ip.ip_address
+  }
+   set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-resource-group"
+    value = data.azurerm_resource_group.main.name
   }
 
   depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
