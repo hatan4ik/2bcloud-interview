@@ -5,7 +5,7 @@ data "azurerm_client_config" "current" {}
 
 # Data declaration for resource group
 data "azurerm_resource_group" "main" {
-  name = "Nathanel-Candidate"
+  name = var.resource_group_name
 }
 
 # Random string for unique naming
@@ -184,6 +184,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
   ]
 }
 
+resource "azurerm_role_assignment" "aks_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+  role_definition_name = "Network Contributor"
+  scope                = data.azurerm_resource_group.main.id
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+
 # Grant AKS Pull Access to ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
   principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
@@ -222,7 +229,10 @@ resource "helm_release" "nginx_ingress" {
     value = data.azurerm_resource_group.main.name
   }
 
-  depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
+  depends_on = [azurerm_kubernetes_cluster.aks,
+  azurerm_public_ip.ingress_public_ip,
+  azurerm_role_assignment.aks_network_contributor
+  ]
 }
 
 # Public IP for Nginx Ingress Controller
