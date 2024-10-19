@@ -34,4 +34,12 @@ spec:
                   name: {{ include "myapp.fullname" . }}-secret
                   key: {{ .Values.keyVault.secretName }}
           {{- end }}
-      {{- if .Values.
+      {{- if .Values.keyVault.enabled }}
+      volumes:
+              - name: secrets-store-inline
+                csi:
+                  driver: secrets-store.csi.k8s.io
+                  readOnly: true
+                  volumeAttributes:
+                    secretProviderClass: {{ include "myapp.fullname" . }}-secretproviderclass
+      {{- end }}
