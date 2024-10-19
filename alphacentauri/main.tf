@@ -301,8 +301,27 @@ resource "helm_release" "redis" {
   namespace  = "redis"
   create_namespace = true
 
-  # Configure Redis Sentinel as needed
-  # ...
+  set {
+    name  = "replica.replicaCount"
+    value = 3
+  }
+
+  set {
+    name  = "auth.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "auth.password"
+    value = "redisPassword123!"
+  }
+
+  set {
+    name  = "sentinel.enabled"
+    value = "true"
+  }
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
 }
 
 # Deploy application using Helm
@@ -443,9 +462,14 @@ resource "helm_release" "cert-manager-azure-dns" {
     value = data.azurerm_client_config.current.tenant_id
   }
   set {
-    name  = "azure.resourceGroupName"
-    value = var.resource_group_name
+    name  = "azure.clientId"
+    value = azurerm_user_assigned_identity.aks_pod_identity.client_id
   }
+  set {
+    name  = "azure.resourceGroup"
+    value = data.azurerm_resource_group.main.name
+  }
+
   set {
     name  = "azure.subscriptionID"
     value = data.azurerm_client_config.current.subscription_id
@@ -460,6 +484,7 @@ resource "helm_release" "cert-manager-azure-dns" {
   }
 
   depends_on = [
+    azurerm_user_assigned_identity.aks_pod_identity,
     azurerm_kubernetes_cluster.aks,
     helm_release.cert_manager,
     azurerm_dns_zone.example
@@ -474,6 +499,8 @@ resource "azurerm_dns_a_record" "myapp" {
   ttl                 = 300
   records             = [azurerm_public_ip.ingress_public_ip.ip_address]
 }
+
+
 
 # Outputs
 output "jenkins_public_ip" {
