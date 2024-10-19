@@ -15,6 +15,24 @@ resource "random_string" "random" {
   upper   = false
 }
 
+
+# Virtual Network
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-${random_string.random.result}"
+  address_space       = [var.vnet_address_space]
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
+# Subnets
+module "subnets" {
+  source = "./modules/subnets"
+
+  resource_group_name = data.azurerm_resource_group.main.name
+  vnet_name           = azurerm_virtual_network.vnet.name
+  subnets             = var.subnets
+}
+
 # Key Vault Configuration
 resource "azurerm_key_vault" "kv" {
   name                        = "kv-${random_string.random.result}"
@@ -42,23 +60,6 @@ resource "azurerm_key_vault_secret" "app_secret" {
   name         = "app-secret"
   value        = "VeryStrongPasswordNow?"
   key_vault_id = azurerm_key_vault.kv.id
-}
-
-# Virtual Network
-resource "azurerm_virtual_network" "vnet" {
-  name                = "vnet-${random_string.random.result}"
-  address_space       = [var.vnet_address_space]
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = data.azurerm_resource_group.main.name
-}
-
-# Subnets
-module "subnets" {
-  source = "./modules/subnets"
-
-  resource_group_name = data.azurerm_resource_group.main.name
-  vnet_name           = azurerm_virtual_network.vnet.name
-  subnets             = var.subnets
 }
 
 # Azure Container Registry
@@ -184,6 +185,13 @@ resource "azurerm_kubernetes_cluster" "aks" {
   ]
 }
 
+# Grant AKS Managed Identity access to Key Vault secrets
+resource "azurerm_role_assignment" "aks_kv_secrets_access" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+}
+
 resource "azurerm_role_assignment" "aks_network_contributor" {
   principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
   role_definition_name = "Network Contributor"
@@ -224,10 +232,14 @@ resource "helm_release" "nginx_ingress" {
     name  = "controller.service.loadBalancerIP"
     value = azurerm_public_ip.ingress_public_ip.ip_address
   }
-   set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-resource-group"
-    value = data.azurerm_resource_group.main.name
+  set {
+    name  = "controller.service.annotations.kubernetes\\.io/ingress\\.class" # Use correct annotation
+    value = "nginx"
   }
+  #  set {
+  #   name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-resource-group"
+  #   value = data.azurerm_resource_group.main.name
+  # }
 
   depends_on = [azurerm_kubernetes_cluster.aks,
   azurerm_public_ip.ingress_public_ip,
@@ -405,4 +417,28 @@ output "acr_login_server" {
 
 output "key_vault_name" {
   value = azurerm_key_vault.kv.name
+}
+
+output "virtual_network_id" {
+  value = azurerm_virtual_network.vnet.id
+}
+
+output "subnet_ids" {
+  value = module.subnets.subnet_ids
+}
+
+output "key_vault_id" {
+  value = azurerm_key_vault.kv.id
+}
+
+output "container_registry_id" {
+  value = azurerm_container_registry.acr.id
+}
+
+output "user_assigned_identity_id" {
+  value = azurerm_user_assigned_identity.aks_pod_identity.id
+}
+
+output "nginx_ingress_ip" {
+  value = azurerm_public_ip.ingress_public_ip.ip_address
 }
