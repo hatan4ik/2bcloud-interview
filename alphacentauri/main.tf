@@ -129,6 +129,8 @@ resource "null_resource" "build_and_push_image" {
       cd ${path.module}/alphacentauri
       docker build -t ${azurerm_container_registry.acr.login_server}/myapp:latest .
       docker push ${azurerm_container_registry.acr.login_server}/myapp:latest
+      #Clean up
+      #docker rmi ${azurerm_container_registry.acr.login_server}/myapp:latest
     EOT
   }
 
@@ -420,6 +422,57 @@ resource "helm_release" "myapp" {
     helm_release.nginx_ingress,
     azurerm_user_assigned_identity.aks_pod_identity
   ]
+}
+
+# Azure DNS Zone (if you don't have one already)
+resource "azurerm_dns_zone" "example" {
+  name                = "yourdomain.com"
+  resource_group_name = var.resource_group_name
+}
+
+# Install Cert-manager Azure DNS addon
+resource "helm_release" "cert-manager-azure-dns" {
+  name             = "cert-manager-azure-dns"
+  repository       = "https://charts.jetstack.io"
+  chart            = "cert-manager-azure-dns"
+  namespace        = "cert-manager"
+  create_namespace = false # cert-manager namespace already created
+
+  set {
+    name  = "azure.tenantID"
+    value = data.azurerm_client_config.current.tenant_id
+  }
+  set {
+    name  = "azure.resourceGroupName"
+    value = var.resource_group_name
+  }
+  set {
+    name  = "azure.subscriptionID"
+    value = data.azurerm_client_config.current.subscription_id
+  }
+  set {
+    name  = "azure.managedIdentity.enabled"
+    value = true
+  }
+  set {
+    name  = "azure.podDnsPolicy"
+    value = "ClusterFirstWithHostNet"
+  }
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks,
+    helm_release.cert_manager,
+    azurerm_dns_zone.example
+  ]
+}
+
+ # A record for my application
+resource "azurerm_dns_a_record" "myapp" {
+  name                = "myapp"
+  zone_name           = azurerm_dns_zone.example.name
+  resource_group_name = var.resource_group_name
+  ttl                 = 300
+  records             = [azurerm_public_ip.ingress_public_ip.ip_address]
 }
 
 # Outputs

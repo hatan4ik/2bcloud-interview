@@ -2,5 +2,8 @@
   "name": "alphacentauri",
   "version": "1.0.0",
   "main": "index.js",
-  "dependencies": {}
+  "dependencies": {
+    "@azure/identity": "^4.5.0",
+    "@azure/keyvault-secrets": "^4.9.0"
+  }
 }

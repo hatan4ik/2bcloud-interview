@@ -24,3 +24,13 @@ keyVault:
   secretName: ""
   tenantID: ""
   userAssignedIdentityID: ""
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  cpuTargetAverageUtilization: 50
+  memoryTargetAverageUtilization: 60
+
+redis:
+  enabled: true
