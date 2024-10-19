@@ -199,6 +199,14 @@ resource "azurerm_role_assignment" "aks_network_contributor" {
   depends_on           = [azurerm_kubernetes_cluster.aks]
 }
 
+#### This one is needed allow access to AKS Resources managed resource group
+resource "azurerm_role_assignment" "aks_managed_rg_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/mc_${data.azurerm_resource_group.main.name}_${azurerm_kubernetes_cluster.aks.name}_${data.azurerm_resource_group.main.location}"
+}
+
+
 # Grant AKS Pull Access to ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
   principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
@@ -253,6 +261,8 @@ resource "azurerm_public_ip" "ingress_public_ip" {
   resource_group_name = data.azurerm_resource_group.main.name
   location            = data.azurerm_resource_group.main.location
   allocation_method   = "Static"
+  sku                 = "Standard"
+  depends_on          = [azurerm_virtual_network.vnet]
 }
 
 # Install cert-manager
