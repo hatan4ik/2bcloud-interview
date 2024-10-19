@@ -190,6 +190,10 @@ resource "azurerm_role_assignment" "aks_kv_secrets_access" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+    depends_on           = [
+    azurerm_kubernetes_cluster.aks,
+    azurerm_public_ip.ingress_public_ip
+  ]
 }
 
 resource "azurerm_role_assignment" "aks_network_contributor" {
@@ -198,6 +202,12 @@ resource "azurerm_role_assignment" "aks_network_contributor" {
   scope                = data.azurerm_resource_group.main.id
   depends_on           = [azurerm_kubernetes_cluster.aks]
 }
+resource "azurerm_role_assignment" "aks_public_ip_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = azurerm_public_ip.ingress_public_ip.id
+}
+
 
 #### This one is needed allow access to AKS Resources managed resource group
 resource "azurerm_role_assignment" "aks_managed_rg_network_contributor" {
@@ -240,14 +250,14 @@ resource "helm_release" "nginx_ingress" {
     name  = "controller.service.loadBalancerIP"
     value = azurerm_public_ip.ingress_public_ip.ip_address
   }
-  set {
-    name  = "controller.service.annotations.kubernetes\\.io/ingress\\.class" # Use correct annotation
-    value = "nginx"
-  }
-  #  set {
-  #   name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-resource-group"
-  #   value = data.azurerm_resource_group.main.name
+  # set {
+  #   name  = "controller.service.annotations.kubernetes\\.io/ingress\\.class" # Use correct annotation
+  #   value = "nginx"
   # }
+    set {
+     name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/azure-load-balancer-resource-group"
+     value = data.azurerm_resource_group.main.name
+   }
 
   depends_on = [azurerm_kubernetes_cluster.aks,
   azurerm_public_ip.ingress_public_ip,
