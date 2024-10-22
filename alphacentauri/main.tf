@@ -18,10 +18,6 @@ locals {
     "--election-id=ingress-controller-leader",
     "--controller-class=k8s.io/ingress-nginx",
     "--configmap=$(POD_NAMESPACE)/${local.resource_prefix}-ingress-nginx-controller",
-    "--health-check-path=/healthz",
-    "--health-check-port=10254",
-    "--tcp-services-configmap=$(POD_NAMESPACE)/tcp-services",
-    "--udp-services-configmap=$(POD_NAMESPACE)/udp-services"
   ]
   ingress_controller_ports = {
     "http"  = 80
@@ -389,25 +385,6 @@ resource "kubernetes_deployment" "nginx_ingress" {
               drop = ["ALL"]
               add  = ["NET_BIND_SERVICE"]
             }
-          }
-
-          liveness_probe {
-            http_get {
-              path   = "/healthz"
-              port   = 10254
-              scheme = "HTTP"
-            }
-            initial_delay_seconds = 10
-            period_seconds        = 10
-          }
-
-          readiness_probe {
-            http_get {
-              path   = "/healthz"
-              port   = 10254
-              scheme = "HTTP"
-            }
-            period_seconds = 10
           }
         }
       }
