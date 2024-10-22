@@ -1,6 +1,6 @@
 FROM node:18
 
-WORKDIR /app
+WORKDIR  /app
 
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
@@ -12,5 +12,5 @@ RUN if [ -f package.json ]; then npm install; fi
 COPY . .
 
 EXPOSE 3000
-
+#Start the application
 CMD ["node", "index.js"]
