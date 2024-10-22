@@ -1,0 +1,552 @@
+# Store the image tag in a local variable
+locals {
+  image_tag       = null_resource.build_and_push_image.triggers.dockerfile_hash
+  resource_prefix = var.resource_prefix
+  all_namespaces = data.kubernetes_all_namespaces.all.namespaces
+
+  common_labels = {
+    "app.kubernetes.io/name"     = "myapp"
+    "app.kubernetes.io/instance" = var.resource_prefix
+  }
+  ingress_labels  = {
+    "app.kubernetes.io/name"    = "ingress-nginx"
+    "app.kubernetes.io/part-of" = "ingress-nginx"
+  }
+  ingress_controller_args = [
+    "/nginx-ingress-controller",
+    "--publish-service=$(POD_NAMESPACE)/${local.resource_prefix}-ingress-nginx-controller",
+    "--election-id=ingress-controller-leader",
+    "--controller-class=k8s.io/ingress-nginx",
+    "--configmap=$(POD_NAMESPACE)/${local.resource_prefix}-ingress-nginx-controller"
+  ]
+  ingress_controller_env = {
+    "POD_NAME"      = "metadata.name"
+    "POD_NAMESPACE" = "metadata.namespace"
+  }
+  ingress_controller_ports = {
+    "http"  = 80
+    "https" = 443
+  }
+  ingress_controller_liveness_probe = {
+    http_get = {
+      path   = "/healthz"
+      port   = 10254
+      scheme = "HTTP"
+    }
+    initial_delay_seconds = 10
+    period_seconds        = 10
+    timeout_seconds       = 1
+    success_threshold     = 1
+    failure_threshold     = 3
+  }
+  ingress_controller_readiness_probe = {
+    http_get = {
+      path   = "/healthz"
+      port   = 10254
+      scheme = "HTTP"
+    }
+    period_seconds    = 10
+    timeout_seconds   = 1
+    success_threshold = 1
+    failure_threshold = 3
+  }
+
+}
+
+# Data declaration for current client configuration
+data "azurerm_client_config" "current" {}
+
+# Data declaration for resource group
+data "azurerm_resource_group" "main" {
+  name = var.resource_group_name
+}
+data "kubernetes_all_namespaces" "all" {}
+
+# Random string for unique naming
+resource "random_string" "random" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# Random string for unique naming
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# Virtual Network
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-${random_string.random.result}"
+  address_space       = [var.vnet_address_space]
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
+# Subnets
+module "subnets" {
+  source              = "./modules/subnets"
+  resource_group_name = data.azurerm_resource_group.main.name
+  vnet_name           = azurerm_virtual_network.vnet.name
+  subnets             = var.subnets
+}
+
+# Key Vault Configuration
+resource "azurerm_key_vault" "kv" {
+  name                        = "kv-${random_string.random.result}"
+  location                    = data.azurerm_resource_group.main.location
+  resource_group_name         = data.azurerm_resource_group.main.name
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  sku_name                    = "standard"
+  purge_protection_enabled    = false
+  enabled_for_disk_encryption = true
+
+  access_policy {
+    tenant_id               = data.azurerm_client_config.current.tenant_id
+    object_id               = data.azurerm_client_config.current.object_id
+    key_permissions         = ["Get", "List", "Create", "Delete", "Update", "Purge"]
+    secret_permissions      = ["Get", "List", "Set", "Delete", "Purge"]
+    certificate_permissions = ["Get", "List", "Create", "Delete", "Update", "Purge"]
+  }
+}
+
+# Store a secret in Key Vault
+resource "azurerm_key_vault_secret" "app_secret" {
+  name         = "app-secret"
+  value        = "VeryStrongPasswordNow?"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+# Azure Container Registry
+resource "azurerm_container_registry" "acr" {
+  name                = "acr${random_string.random.result}"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+  sku                 = "Premium"
+  admin_enabled       = false
+}
+
+
+resource "kubernetes_secret" "acr_pull_secret" {
+  for_each = toset(length(var.target_namespaces) > 0 ? var.target_namespaces : local.all_namespaces)
+
+  metadata {
+    name      = "acr-pull-secret"
+    namespace = each.key
+  }
+
+  type = "kubernetes.io/dockerconfigjson"
+
+  data = {
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        "${azurerm_container_registry.acr.login_server}" = {
+          auth = base64encode("${azuread_service_principal.acr_sp.client_id}:${azuread_service_principal_password.acr_sp_password.value}")
+        }
+      }
+    })
+  }
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks,
+    azuread_service_principal_password.acr_sp_password
+  ]
+}
+
+
+
+# Service Principal and Application for ACR access
+resource "azuread_application" "acr_app" {
+  display_name = "acr-application-${random_string.random.result}"
+}
+
+resource "azuread_service_principal" "acr_sp" {
+  client_id                    = azuread_application.acr_app.client_id
+  app_role_assignment_required = false
+}
+
+resource "azuread_service_principal_password" "acr_sp_password" {
+  service_principal_id = azuread_service_principal.acr_sp.id
+}
+
+# Store Service Principal credentials in Key Vault
+resource "azurerm_key_vault_secret" "acr_sp_secret" {
+  name = "acr-sp-secret"
+  value = jsonencode({
+    clientId     = azuread_service_principal.acr_sp.client_id
+    clientSecret = azuread_service_principal_password.acr_sp_password.value
+  })
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+# AKS Cluster Definition
+resource "azurerm_kubernetes_cluster" "aks" {
+  name                = "aks-${random_string.random.result}"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  kubernetes_version  = "1.30.4"
+  dns_prefix          = "aks-${random_string.random.result}"
+
+  default_node_pool {
+    name           = "default"
+    node_count     = 1
+    vm_size        = "Standard_DS2_v2"
+    vnet_subnet_id = module.subnets.subnet_ids["aks"]
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  network_profile {
+    network_plugin    = "azure"
+    network_policy    = "azure"
+    service_cidr      = "172.244.0.0/16"
+    dns_service_ip    = "172.244.0.10"
+    load_balancer_sku = "standard"
+  }
+
+  depends_on = [azurerm_container_registry.acr]
+}
+
+# Role Assignment for AKS
+resource "azurerm_role_assignment" "aks_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+  role_definition_name = "Network Contributor"
+  scope                = data.azurerm_resource_group.main.id
+}
+
+resource "azurerm_role_assignment" "aks_acr_pull" {
+  role_definition_name = "AcrPull"
+  scope                = azurerm_container_registry.acr.id
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+}
+
+# AKS role contribute to assing properly IP
+
+resource "azurerm_role_assignment" "aks_public_ip_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = azurerm_public_ip.ingress_public_ip.id
+}
+
+
+#### This one is needed allow access to AKS Resources managed resource group
+resource "azurerm_role_assignment" "aks_managed_rg_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/mc_${data.azurerm_resource_group.main.name}_${azurerm_kubernetes_cluster.aks.name}_${data.azurerm_resource_group.main.location}"
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+# Grant AKS Managed Identity access to Key Vault secrets
+resource "azurerm_role_assignment" "aks_kv_secrets_access" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+# Public IP for Ingress
+resource "azurerm_public_ip" "ingress_public_ip" {
+  name                = "ingress-public-ip-${random_string.random.result}"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+# Kubernetes Resources - NGINX Ingress and MyApp
+resource "kubernetes_namespace" "ingress_nginx" {
+  metadata {
+    name = var.namespace
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+
+}
+
+resource "kubernetes_deployment" "nginx_ingress" {
+  metadata {
+    name      = "${var.resource_prefix}-nginx-ingress"
+    namespace = var.ingress_namespace
+    labels = merge(var.common_labels, {
+      "app.kubernetes.io/name"    = "ingress-nginx"
+      "app.kubernetes.io/part-of" = "ingress-nginx"
+    })
+  }
+
+  spec {
+    replicas = var.ingress_replicas
+
+    selector {
+      match_labels = merge(var.common_labels, {
+        "app.kubernetes.io/name"    = "ingress-nginx"
+        "app.kubernetes.io/part-of" = "ingress-nginx"
+      })
+    }
+
+    template {
+      metadata {
+        labels = merge(var.common_labels, {
+          "app.kubernetes.io/name"    = "ingress-nginx"
+          "app.kubernetes.io/part-of" = "ingress-nginx"
+        })
+        annotations = {
+          "prometheus.io/port"   = "10254"
+          "prometheus.io/scrape" = "true"
+        }
+      }
+
+      spec {
+        container {
+          name  = "nginx-ingress-controller"
+          image = var.nginx_ingress_image
+          args = [
+            "/nginx-ingress-controller",
+            "--publish-service=$(POD_NAMESPACE)/${var.resource_prefix}-ingress-nginx-controller",
+            "--election-id=ingress-controller-leader",
+            "--controller-class=k8s.io/ingress-nginx",
+            "--configmap=$(POD_NAMESPACE)/${var.resource_prefix}-ingress-nginx-controller"
+          ]
+
+          security_context {
+            allow_privilege_escalation = false
+            run_as_user                = 101
+            capabilities {
+              drop = ["ALL"]
+              add  = ["NET_BIND_SERVICE"]
+            }
+          }
+
+          env {
+            name = "POD_NAME"
+            value_from {
+              field_ref {
+                field_path = "metadata.name"
+              }
+            }
+          }
+          env {
+            name = "POD_NAMESPACE"
+            value_from {
+              field_ref {
+                field_path = "metadata.namespace"
+              }
+            }
+          }
+
+          port {
+            name           = "http"
+            container_port = 80
+            protocol       = "TCP"
+          }
+          port {
+            name           = "https"
+            container_port = 443
+            protocol       = "TCP"
+          }
+
+          liveness_probe {
+            http_get {
+              path   = "/healthz"
+              port   = 10254
+              scheme = "HTTP"
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
+            timeout_seconds       = 1
+            success_threshold     = 1
+            failure_threshold     = 3
+          }
+
+          readiness_probe {
+            http_get {
+              path   = "/healthz"
+              port   = 10254
+              scheme = "HTTP"
+            }
+            period_seconds    = 10
+            timeout_seconds   = 1
+            success_threshold = 1
+            failure_threshold = 3
+          }
+        }
+
+        service_account_name             = "${var.resource_prefix}-nginx-ingress-serviceaccount"
+        automount_service_account_token  = true
+        termination_grace_period_seconds = 300
+      }
+    }
+  }
+
+  depends_on = [kubernetes_namespace.ingress_nginx]
+}
+
+resource "kubernetes_service" "nginx_ingress" {
+  metadata {
+    name      = "nginx-ingress-controller"
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+
+    annotations = {
+      "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
+    }
+  }
+  spec {
+    type = "LoadBalancer"
+    port {
+      port        = 80
+      target_port = 80
+      protocol    = "TCP"
+      name        = "http"
+    }
+    selector = {
+      app = "nginx-ingress"
+    }
+    load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
+  }
+  depends_on = [kubernetes_deployment.nginx_ingress]
+}
+
+
+# Update kubeconfig with AKS credentials
+resource "null_resource" "update_kubeconfig" {
+  triggers = {
+    aks_cluster_id = azurerm_kubernetes_cluster.aks.id
+  }
+  provisioner "local-exec" {
+    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin"
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+# Build and push Docker image to ACR
+resource "null_resource" "build_and_push_image" {
+  triggers = {
+    dockerfile_hash  = filemd5("${path.module}/Dockerfile")
+    source_code_hash = md5(join("", [for f in fileset("${path.module}/src", "**") : filemd5("${path.module}/src/${f}")]))
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+      SP_CREDENTIALS=$(az keyvault secret show --vault-name ${azurerm_key_vault.kv.name} --name acr-sp-secret --query value -o tsv)
+      CLIENT_ID=$(echo $SP_CREDENTIALS | jq -r .clientId)
+      CLIENT_SECRET=$(echo $SP_CREDENTIALS | jq -r .clientSecret)
+
+      az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant ${data.azurerm_client_config.current.tenant_id}
+      az acr login --name ${azurerm_container_registry.acr.name}
+
+      # Build and push the Docker image
+      IMAGE_TAG=$(git rev-parse --short HEAD)
+      docker build -t ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG ${path.module}
+      docker push ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG
+
+      # Clean up image
+      docker rmi ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG
+    EOT
+  }
+  depends_on = [
+    azurerm_container_registry.acr,
+    azurerm_key_vault_secret.acr_sp_secret,
+    azurerm_kubernetes_cluster.aks,
+    null_resource.update_kubeconfig
+  ]
+}
+
+resource "kubernetes_deployment" "myapp" {
+  metadata {
+    name      = "myapp"
+    namespace = "default"
+    labels =  local.common_labels
+    
+  }
+  spec {
+    replicas = var.replicas
+
+    selector {
+      match_labels = {
+        app = "myapp"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "myapp"
+        }
+      }
+      spec {
+        image_pull_secrets {
+          name = kubernetes_secret.acr_pull_secret[var.app_namespace].metadata[0].name
+        }
+        container {
+          name  = "myapp"
+          image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
+          port {
+            container_port = 3000
+            protocol       = "TCP"
+          }
+        }
+      }
+    }
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks, kubernetes_service.myapp, null_resource.build_and_push_image]
+}
+
+resource "kubernetes_service" "myapp" {
+  metadata {
+    name      = "myapp-service"
+    namespace = "default"
+  }
+  spec {
+    type = "ClusterIP"
+    port {
+      port        = 80
+      target_port = 3000
+      protocol    = "TCP"
+      name        = "http"
+    }
+    selector = {
+      app = "myapp"
+    }
+  }
+  #depends_on = [kubernetes_deployment.myapp]
+}
+
+resource "kubernetes_ingress" "myapp_ingress" {
+  metadata {
+    name      = "myapp-ingress"
+    namespace = "default"
+    annotations = {
+      "kubernetes.io/ingress.class" = "nginx"
+    }
+  }
+  spec {
+    rule {
+      host = "myapp.yourdomain.com"
+      http {
+        path {
+          backend {
+            service_name = kubernetes_service.myapp.metadata[0].name
+            service_port = 80
+          }
+          path = "/"
+        }
+      }
+    }
+  }
+  depends_on = [kubernetes_service.nginx_ingress, kubernetes_service.myapp]
+}
+
+# Verification: Get Nginx Ingress Controller public IP and application output
+resource "null_resource" "verify_app" {
+  provisioner "local-exec" {
+    command = <<EOT
+      export INGRESS_IP=$(kubectl get svc -n ingress-nginx nginx-ingress-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      echo "Nginx Ingress Controller Public IP: $INGRESS_IP"
+      curl http://$INGRESS_IP
+EOT
+  }
+
+  depends_on = [
+    kubernetes_deployment.nginx_ingress,
+    kubernetes_ingress.myapp_ingress,
+    kubernetes_service.myapp
+  ]
+}

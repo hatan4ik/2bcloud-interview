@@ -11,9 +11,9 @@ subnets = {
     address_prefix = "10.0.2.0/24"
   },
   acr = {
-    name               = "acr-subnet"
-    address_prefix     = "10.0.3.0/24"
-    service_endpoints  = ["Microsoft.ContainerRegistry"]
+    name              = "acr-subnet"
+    address_prefix    = "10.0.3.0/24"
+    service_endpoints = ["Microsoft.ContainerRegistry"]
   }
 }
 nsgs = {
@@ -72,3 +72,7 @@ nsgs = {
     ]
   }
 }
+kubernetes_version  = "1.30.4"
+node_count          = 1
+vm_size             = "Standard_DS2_v2"
+nginx_ingress_image = "registry.k8s.io/ingress-nginx/controller:v1.11.3"

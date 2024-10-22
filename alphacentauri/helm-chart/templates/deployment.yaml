@@ -1,45 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "myapp.fullname" . }}
-  labels:
-    {{- include "myapp.labels" . | nindent 4 }}
+  name: myapp
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "myapp.selectorLabels" . | nindent 6 }}
+      app: myapp
   template:
     metadata:
       labels:
-        {{- include "myapp.selectorLabels" . | nindent 8 }}
+        app: myapp
     spec:
       containers:
-        - name: {{ .Chart.Name }}
+        - name: myapp
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          imagePullPolicy: "{{ .Values.image.pullPolicy }}"
           ports:
-            - name: http
-              containerPort: 3000
-              protocol: TCP
-          {{- if .Values.keyVault.enabled }}
-          volumeMounts:
-            - name: secrets-store-inline
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
-          env:
-            - name: APP_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "myapp.fullname" . }}-secret
-                  key: {{ .Values.keyVault.secretName }}
-          {{- end }}
-      {{- if .Values.keyVault.enabled }}
-      volumes:
-              - name: secrets-store-inline
-                csi:
-                  driver: secrets-store.csi.k8s.io
-                  readOnly: true
-                  volumeAttributes:
-                    secretProviderClass: {{ include "myapp.fullname" . }}-secretproviderclass
-      {{- end }}
+            - containerPort: 80

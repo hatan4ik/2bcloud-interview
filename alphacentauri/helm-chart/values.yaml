@@ -1,9 +1,8 @@
-replicaCount: 1
-
+replicaCount: 2
 image:
-  repository: myacrregistry.azurecr.io/myapp
-  tag: "latest"
-  pullPolicy: IfNotPresent
+  repository: myacr.azurecr.io/myapp
+  tag: latest
+  pullPolicy: Always
 
 service:
   type: ClusterIP
@@ -11,26 +10,51 @@ service:
 
 ingress:
   enabled: true
-  className: "nginx"
   annotations:
-    kubernetes.io/ingress.class: nginx
+    kubernetes.io/ingress.class: "nginx"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts: []
-  tls: []
+  hosts:
+    - host: myapp.${INGRESS_IP}.nip.io
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: myapp-tls
+      hosts:
+        - myapp.${INGRESS_IP}.nip.io
+# values.yaml for cert-manager Helm chart
+installCRDs: true
+ingressShim:
+  defaultIssuerName: letsencrypt-prod
+  defaultIssuerKind: ClusterIssuer
 
-keyVault:
-  enabled: false
-  name: ""
-  secretName: ""
-  tenantID: ""
-  userAssignedIdentityID: ""
-
-hpa:
+# Cluster Issuer for Let's Encrypt
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: youremail@example.com
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - dns01:
+          azureDNS:
+            clientID: <client-id>
+            clientSecretSecretRef:
+              name: azure-dns
+              key: client-secret
+            tenantID: <tenant-id>
+            subscriptionID: <subscription-id>
+            resourceGroupName: <resource-group>
+# values.yaml for redis
+replica:
+  replicaCount: 3
+auth:
   enabled: true
-  minReplicas: 1
-  maxReplicas: 3
-  cpuTargetAverageUtilization: 50
-  memoryTargetAverageUtilization: 60
-
-redis:
+  password: redisPassword123!
+sentinel:
   enabled: true
+  replicas: 3

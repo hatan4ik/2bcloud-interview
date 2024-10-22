@@ -7,7 +7,7 @@ const { SecretClient } = require('@azure/keyvault-secrets');
 const { DefaultAzureCredential } = require('@azure/identity');
 
 // Key Vault configuration (replace with your values)
-const keyVaultName = '<your-key-vault-name>';
+const keyVaultName = process.env.KEY_VAULT_NAME; // Using environment variable for key vault name
 const secretName = '<your-secret-name>';
 const keyVaultUri = `https://${keyVaultName}.vault.azure.net`;
 
@@ -15,6 +15,7 @@ const keyVaultUri = `https://${keyVaultName}.vault.azure.net`;
 const credential = new DefaultAzureCredential();
 const client = new SecretClient(keyVaultUri, credential);
 
+// Function to get the secret from Key Vault
 async function getSecret() {
   try {
     const latestSecret = await client.getSecret(secretName);
@@ -25,11 +26,18 @@ async function getSecret() {
   }
 }
 
-app.get('/', async (req, res) => {
+// Route that returns "Hello World!"
+app.get('/', (req, res) => {
+  res.send('Hello World!');
+});
+
+// Route that returns "Hello World!" with the secret value
+app.get('/secret', async (req, res) => {
   const appSecret = await getSecret();
   res.send(`Hello World! Secret: ${appSecret}`);
 });
 
+// Start listening on the specified port
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });

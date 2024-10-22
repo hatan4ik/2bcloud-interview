@@ -1,0 +1,826 @@
+# Main.tf modified to deploy all resources directly using Terraform without Helm
+
+# Store the image tag in a local variable
+locals {
+  image_tag = null_resource.build_and_push_image.triggers.dockerfile_hash
+}
+# Data declaration for current client configuration
+data "azurerm_client_config" "current" {}
+
+# Data declaration for resource group
+data "azurerm_resource_group" "main" {
+  name = var.resource_group_name
+}
+
+# Random string for unique naming
+resource "random_string" "random" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# Virtual Network
+resource "azurerm_virtual_network" "vnet" {
+  name                = "vnet-${random_string.random.result}"
+  address_space       = [var.vnet_address_space]
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
+# Subnets
+module "subnets" {
+  source = "./modules/subnets"
+
+  resource_group_name = data.azurerm_resource_group.main.name
+  vnet_name           = azurerm_virtual_network.vnet.name
+  subnets             = var.subnets
+}
+
+# Key Vault Configuration
+resource "azurerm_key_vault" "kv" {
+  name                        = "kv-${random_string.random.result}"
+  location                    = data.azurerm_resource_group.main.location
+  resource_group_name         = data.azurerm_resource_group.main.name
+  enabled_for_disk_encryption = true
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  sku_name                    = "standard"
+  purge_protection_enabled    = false
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+    key_permissions = [
+      "Get",
+      "List",
+      "Create",
+      "Delete",
+      "Update",
+      "Purge",
+    ]
+    secret_permissions = [
+      "Get",
+      "List",
+      "Set",
+      "Delete",
+      "Purge",
+    ]
+    certificate_permissions = [
+      "Get",
+      "List",
+      "Create",
+      "Delete",
+      "Update",
+      "Purge",
+    ]
+  }
+  depends_on = [
+    azurerm_virtual_network.vnet
+  ]
+}
+
+# Store a secret in Key Vault
+resource "azurerm_key_vault_secret" "app_secret" {
+  name         = "app-secret"
+  value        = "VeryStrongPasswordNow?"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+# Azure Container Registry
+resource "azurerm_container_registry" "acr" {
+  name                = "acr${random_string.random.result}"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+  sku                 = "Basic"
+  admin_enabled       = false
+}
+
+# Create an Azure AD Application
+resource "azuread_application" "acr_app" {
+  display_name = "acr-application-${random_string.random.result}"
+}
+
+# Create a Service Principal (linked to the application)
+resource "azuread_service_principal" "acr_sp" {
+  client_id                    = azuread_application.acr_app.client_id
+  app_role_assignment_required = false
+}
+
+# Create Service Principal password
+resource "azuread_service_principal_password" "acr_sp_password" {
+  service_principal_id = azuread_service_principal.acr_sp.id
+}
+
+# Store Service Principal credentials in Key Vault
+resource "azurerm_key_vault_secret" "acr_sp_secret" {
+  name = "acr-sp-secret"
+  value = jsonencode({
+    clientId     = azuread_service_principal.acr_sp.client_id
+    clientSecret = azuread_service_principal_password.acr_sp_password.value # Get the password value
+  })
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+# Update kubeconfig with AKS credentials
+resource "null_resource" "update_kubeconfig" {
+  triggers = {
+    aks_cluster_id = azurerm_kubernetes_cluster.aks.id
+  }
+  provisioner "local-exec" {
+    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin"
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+# Build and push Docker image to ACR
+resource "null_resource" "build_and_push_image" {
+  triggers = {
+    dockerfile_hash  = filemd5("${path.module}/Dockerfile")
+    source_code_hash = md5(join("", [for f in fileset("${path.module}/src", "**") : filemd5("${path.module}/src/${f}")]))
+  }
+  provisioner "local-exec" {
+    command = <<EOT
+      SP_CREDENTIALS=$(az keyvault secret show --vault-name ${azurerm_key_vault.kv.name} --name acr-sp-secret --query value -o tsv)
+      CLIENT_ID=$(echo $SP_CREDENTIALS | jq -r .clientId)
+      CLIENT_SECRET=$(echo $SP_CREDENTIALS | jq -r .clientSecret)
+
+      az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant ${data.azurerm_client_config.current.tenant_id}
+      az acr login --name ${azurerm_container_registry.acr.name}
+      ## AKS cluster config
+      kubectl config get-contexts
+      kubectl config use-context ${azurerm_kubernetes_cluster.aks.name}
+      # Build and push the Docker image
+      IMAGE_TAG=$(git rev-parse --short HEAD)
+      docker build -t ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG ${path.module}
+      docker push ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG
+
+      # # Clean up
+      # docker rmi ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG
+      cd ${path.module}/alphacentauri
+      #docker build -t ${azurerm_container_registry.acr.login_server}/myapp:latest .
+      #docker push ${azurerm_container_registry.acr.login_server}/myapp:latest
+      docker rmi ${azurerm_container_registry.acr.login_server}/myapp:$IMAGE_TAG
+
+    EOT
+  }
+  depends_on = [
+    azurerm_container_registry.acr,
+    azurerm_key_vault_secret.acr_sp_secret,
+    azurerm_kubernetes_cluster.aks,
+    null_resource.update_kubeconfig
+  ]
+}
+
+# AKS Cluster Definition
+resource "azurerm_kubernetes_cluster" "aks" {
+  name                = "aks-${random_string.random.result}"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+  kubernetes_version  = "1.30.4"
+  sku_tier            = "Standard"
+  dns_prefix          = "aks-${random_string.random.result}"
+  default_node_pool {
+    name           = "default"
+    node_count     = 1
+    vm_size        = "Standard_DS2_v2"
+    vnet_subnet_id = module.subnets.subnet_ids["aks"]
+  }
+  identity {
+    type = "SystemAssigned"
+  }
+  network_profile {
+    network_plugin    = "azure"
+    network_policy    = "azure"
+    service_cidr      = "172.244.0.0/16"
+    dns_service_ip    = "172.244.0.10"
+    load_balancer_sku = "standard"
+  }
+  depends_on = [azurerm_container_registry.acr]
+}
+# AKS role contribute to assing properly IP
+resource "azurerm_role_assignment" "aks_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+  role_definition_name = "Network Contributor"
+  scope                = data.azurerm_resource_group.main.id
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+resource "azurerm_role_assignment" "aks_public_ip_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = azurerm_public_ip.ingress_public_ip.id
+}
+
+
+#### This one is needed allow access to AKS Resources managed resource group
+resource "azurerm_role_assignment" "aks_managed_rg_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/mc_${data.azurerm_resource_group.main.name}_${azurerm_kubernetes_cluster.aks.name}_${data.azurerm_resource_group.main.location}"
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+# Grant AKS Managed Identity access to Key Vault secrets
+resource "azurerm_role_assignment" "aks_kv_secrets_access" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  depends_on           = [azurerm_kubernetes_cluster.aks]
+}
+
+# Grant AKS Pull Access to ACR
+resource "azurerm_role_assignment" "aks_acr_pull" {
+  #principal_id         = azurerm_kubernetes_cluster.aks.identity[0].principal_id
+  role_definition_name = "AcrPull"
+  scope                = azurerm_container_registry.acr.id
+  principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+
+}
+
+# User Assigned Identity for Pod
+resource "azurerm_user_assigned_identity" "aks_pod_identity" {
+  name                = "aks-pod-identity-${random_string.random.result}"
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
+# Grant the User Assigned Identity access to the Key Vault secret
+resource "azurerm_role_assignment" "kv_secret_reader" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.aks_pod_identity.principal_id
+}
+
+# Kubernetes Namespaces
+resource "kubernetes_namespace" "ingress_nginx" {
+  metadata {
+    name = "ingress-nginx"
+  }
+}
+
+resource "kubernetes_namespace" "redis" {
+  metadata {
+    name = "redis"
+  }
+}
+
+# ServiceAccount for NGINX Ingress
+resource "kubernetes_service_account" "nginx_ingress_sa" {
+  metadata {
+    name      = "nginx-ingress-sa"
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+  }
+}
+
+# Cluster Role for NGINX Ingress
+resource "kubernetes_cluster_role" "nginx_ingress_role" {
+  metadata {
+    name = "nginx-ingress-role"
+  }
+  rule {
+    api_groups = [""]
+    resources  = ["services", "endpoints", "configmaps", "secrets"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
+  }
+  rule {
+    api_groups = ["extensions", "networking.k8s.io"]
+    resources  = ["ingresses"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch", "delete"]
+  }
+}
+
+# Cluster Role Binding for NGINX Ingress
+resource "kubernetes_cluster_role_binding" "nginx_ingress_role_binding" {
+  metadata {
+    name = "nginx-ingress-role-binding"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role.nginx_ingress_role.metadata[0].name
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.nginx_ingress_sa.metadata[0].name
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+  }
+}
+
+
+resource "kubernetes_config_map" "nginx_configuration" {
+  metadata {
+    name      = "nginx-configuration"
+    namespace = "ingress-nginx"
+  }
+  # Add necessary data here
+}
+resource "kubernetes_deployment" "nginx_ingress" {
+  metadata {
+    name      = "nginx-ingress-controller"
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+    labels = {
+      app = "nginx-ingress"
+    }
+  }
+
+  spec {
+    replicas = 2
+
+    selector {
+      match_labels = {
+        app = "nginx-ingress"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "nginx-ingress"
+        }
+      }
+
+      spec {
+        container {
+          name  = "nginx-ingress-controller"
+          image = "k8s.gcr.io/ingress-nginx/controller:v1.1.1"
+
+          args = [
+            "/nginx-ingress-controller",
+            "--configmap=$(POD_NAMESPACE)/nginx-ingress-controller",
+            "--publish-service=$(POD_NAMESPACE)/nginx-ingress-controller",
+            "--annotations-prefix=nginx.ingress.kubernetes.io"
+          ]
+
+          env {
+            name  = "POD_NAMESPACE"
+            value = "nginx-ingress"
+          }
+
+          port {
+            container_port = 80
+            protocol       = "TCP"
+          }
+
+          port {
+            container_port = 443
+            protocol       = "TCP"
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service" "nginx_ingress" {
+  metadata {
+    name      = "nginx-ingress-controller"
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+    labels = {
+      app = "nginx-ingress"
+    }
+    annotations = {
+      "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
+    }
+  }
+
+  spec {
+    type = "LoadBalancer"
+
+    load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
+
+
+    selector = {
+      app = "nginx-ingress"
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 80
+    }
+
+    port {
+      name        = "https"
+      port        = 443
+      target_port = 443
+    }
+  }
+}
+
+# NGINX Ingress Controller Service
+# resource "kubernetes_service" "nginx_ingress_service" {
+#   metadata {
+#     name      = "nginx-ingress"
+#     namespace = kubernetes_namespace.ingress_nginx.metadata.0.name
+#   }
+#   spec {
+#     selector = {
+#       app = "nginx-ingress"
+#     }
+#     type = "LoadBalancer"
+#     port {
+#       port        = 80
+#       target_port = 80
+#     }
+#     load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
+#   }
+#   depends_on = [
+#     kubernetes_deployment.nginx_ingress_controller,
+#     azurerm_public_ip.ingress_public_ip]
+# }
+
+# Public IP for Nginx Ingress Controller
+resource "azurerm_public_ip" "ingress_public_ip" {
+  name                = "ingress-public-ip-${random_string.random.result}"
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  depends_on          = [azurerm_virtual_network.vnet]
+}
+
+# Deploy Redis as a StatefulSet
+resource "kubernetes_stateful_set" "redis" {
+  metadata {
+    name      = "redis"
+    namespace = kubernetes_namespace.redis.metadata[0].name
+    labels = {
+      app = "redis"
+    }
+  }
+  spec {
+    service_name = "redis"
+    replicas     = 3
+    selector {
+      match_labels = {
+        app = "redis"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "redis"
+        }
+      }
+      spec {
+        container {
+          name  = "redis"
+          image = "bitnami/redis:latest"
+          port {
+            container_port = 6379
+          }
+          env {
+            name  = "REDIS_PASSWORD"
+            value = "redisPassword123!"
+          }
+        }
+      }
+    }
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+# Redis Service
+resource "kubernetes_service" "redis_service" {
+  metadata {
+    name      = "redis"
+    namespace = kubernetes_namespace.redis.metadata[0].name
+  }
+  spec {
+    selector = {
+      app = "redis"
+    }
+    port {
+      port        = 6379
+      target_port = 6379
+    }
+    cluster_ip = "None"
+  }
+}
+
+# Deployment for your application
+resource "kubernetes_deployment" "myapp" {
+  metadata {
+    name      = "myapp"
+    namespace = "default"
+    labels = {
+      app = "myapp"
+    }
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "myapp"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "myapp"
+        }
+      }
+      spec {
+        service_account_name = "myapp-sa" # Use the service account
+        container {
+          name  = "myapp"
+          image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
+          port {
+            container_port = 3000
+          }
+          env {
+            name  = "KEY_VAULT_NAME"
+            value = azurerm_key_vault.kv.name
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks,
+    kubernetes_service.myapp_service,
+    kubernetes_deployment.nginx_ingress,
+    kubernetes_ingress.myapp_ingress,   # Add this dependency
+    kubernetes_deployment.cert_manager, # Add this dependency (if using Cert-manager)
+    #kubernetes_deployment.cert_manager_azure_dns # Add this dependency (if using Cert-manager)
+  ]
+}
+
+# Service for your application
+resource "kubernetes_service" "myapp_service" {
+  metadata {
+    name      = "myapp-service"
+    namespace = "default"
+  }
+  spec {
+    selector = {
+      app = "myapp"
+    }
+    port {
+      port        = 80
+      target_port = 3000
+    }
+  }
+}
+
+# Horizontal Pod Autoscaler for Web Application
+resource "kubernetes_horizontal_pod_autoscaler" "myapp_hpa" {
+  metadata {
+    name      = "myapp-hpa"
+    namespace = "default"
+  }
+  spec {
+    scale_target_ref {
+      kind        = "Deployment"
+      name        = kubernetes_deployment.myapp.metadata[0].name
+      api_version = "apps/v1"
+    }
+    min_replicas = 1
+    max_replicas = 5
+    metric {
+      type = "Resource"
+      resource {
+        name = "cpu"
+        target {
+          type                = "Utilization"
+          average_utilization = 50
+        }
+      }
+    }
+  }
+}
+
+# Azure DNS Zone (if you don't have one already)
+resource "azurerm_dns_zone" "example" {
+  name                = "yourdomain.com"
+  resource_group_name = var.resource_group_name
+}
+
+# A record for your application
+resource "azurerm_dns_a_record" "myapp" {
+  name                = "myapp"
+  zone_name           = azurerm_dns_zone.example.name
+  resource_group_name = var.resource_group_name
+  ttl                 = 300
+  records             = [azurerm_public_ip.ingress_public_ip.ip_address]
+}
+
+# Install Cert-manager
+resource "kubernetes_namespace" "cert_manager" {
+  metadata {
+    name = "cert-manager"
+  }
+}
+
+resource "kubernetes_service_account" "cert_manager" {
+  metadata {
+    name      = "cert-manager"
+    namespace = kubernetes_namespace.cert_manager.metadata[0].name
+  }
+}
+
+resource "kubernetes_cluster_role" "cert_manager" {
+  metadata {
+    name = "cert-manager"
+  }
+  rule {
+    api_groups = [
+      "",
+      "admissionregistration.k8s.io",
+      "apiextensions.k8s.io",
+      "apiregistration.k8s.io",
+      "apps",
+      "autoscaling",
+      "batch",
+      "certificates.k8s.io",
+      "coordination.k8s.io",
+      "events.k8s.io",
+      "extensions",
+      "networking.k8s.io",
+      "policy",
+      "rbac.authorization.k8s.io",
+      "storage.k8s.io",
+    ]
+    resources = [
+      "*",
+      "challenges",
+      "clusterissuers",
+      "issuers",
+      "orders",
+    ]
+    verbs = [
+      "*",
+      "create",
+      "delete",
+      "deletecollection",
+      "get",
+      "list",
+      "patch",
+      "update",
+      "watch",
+    ]
+  }
+}
+
+resource "kubernetes_cluster_role_binding" "cert_manager" {
+  metadata {
+    name = "cert-manager"
+  }
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role.cert_manager.metadata[0].name
+  }
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.cert_manager.metadata[0].name
+    namespace = kubernetes_namespace.cert_manager.metadata[0].name
+  }
+}
+
+resource "kubernetes_deployment" "cert_manager" {
+  metadata {
+    name      = "cert-manager"
+    namespace = kubernetes_namespace.cert_manager.metadata[0].name
+    labels = {
+      app = "cert-manager"
+    }
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "cert-manager"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "cert-manager"
+        }
+      }
+      spec {
+        service_account_name = kubernetes_service_account.cert_manager.metadata[0].name
+        container {
+          name  = "cert-manager"
+          image = "quay.io/jetstack/cert-manager-controller:v1.10.1"
+          args = [
+            "--v=2",
+            "--cluster-resource-namespace=$(POD_NAMESPACE)",
+            "--leader-elect",
+          ]
+        }
+      }
+    }
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+# Install Cert-manager Azure DNS addon
+# resource "kubernetes_deployment" "cert_manager_azure_dns" {
+#   metadata {
+#     name      = "cert-manager-azure-dns"
+#     namespace = kubernetes_namespace.cert_manager.metadata[0].name
+#     labels = {
+#       app = "cert-manager-azure-dns"
+#     }
+#   }
+#   spec {
+#     replicas = 1
+#     selector {
+#       match_labels = {
+#         app = "cert-manager-azure-dns"
+#       }
+#     }
+#     template {
+#       metadata {
+#         labels = {
+#           app = "cert-manager-azure-dns"
+#         }
+#       }
+#       spec {
+#         # Add the image pull secret here
+#         image_pull_secrets {
+#           name = "quay-io-secret" 
+#         }
+#         service_account_name = "cert-manager"
+#         container {
+#           name  = "cert-manager-azure-dns"
+#           image = "quay.io/jetstack/cert-manager-dns-azure:v1.9.1"
+#           args = [
+#             "--v=2",
+#             "--cluster-resource-namespace=$(POD_NAMESPACE)",
+#           ]
+#           env {
+#             name  = "AZURE_SUBSCRIPTION_ID"
+#             value = data.azurerm_client_config.current.subscription_id
+#           }
+#           env {
+#             name  = "AZURE_TENANT_ID"
+#             value = data.azurerm_client_config.current.tenant_id
+#           }
+#           env {
+#             name  = "AZURE_RESOURCE_GROUP"
+#             value = var.resource_group_name
+#           }
+#         }
+#       }
+#     }
+#   }
+#   depends_on = [
+#     azurerm_kubernetes_cluster.aks,
+#     kubernetes_deployment.cert_manager,
+#     azurerm_dns_zone.example
+#   ]
+# }
+# Ingress for your application
+resource "kubernetes_ingress" "myapp_ingress" {
+  metadata {
+    name      = "myapp-ingress"
+    namespace = "default"
+    annotations = {
+      "kubernetes.io/ingress.class"                = "nginx"
+      "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
+      "nginx.ingress.kubernetes.io/rewrite-target" = "/$2"
+    }
+  }
+  spec {
+    rule {
+      host = "myapp.yourdomain.com"
+      http {
+        path {
+          backend {
+            service_name = kubernetes_service.myapp_service.metadata[0].name
+            service_port = 80
+          }
+          path = "/"
+        }
+      }
+    }
+    tls {
+      hosts       = ["myapp.yourdomain.com"]
+      secret_name = "myapp-tls"
+    }
+  }
+  depends_on = [
+    kubernetes_service.myapp_service,
+    kubernetes_deployment.cert_manager,
+    #kubernetes_deployment.cert_manager_azure_dns,
+    kubernetes_deployment.nginx_ingress
+  ]
+}
+
+# Verification: Get Nginx Ingress Controller public IP and application output
+resource "null_resource" "verify_app" {
+  provisioner "local-exec" {
+    command = <<EOT
+      export INGRESS_IP=$(kubectl get svc -n ingress-nginx -o jsonpath='{.items[0].status.loadBalancer.ingress[0].ip}')
+      echo "Nginx Ingress Controller Public IP: $INGRESS_IP"
+      curl http://$INGRESS_IP
+EOT
+  }
+
+  depends_on = [
+    kubernetes_deployment.nginx_ingress,
+    kubernetes_ingress.myapp_ingress,
+    kubernetes_service.myapp_service
+  ]
+}
