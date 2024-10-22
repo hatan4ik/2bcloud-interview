@@ -286,6 +286,11 @@ resource "kubernetes_cluster_role" "nginx_ingress_cluster_role" {
   }
 
   rule {
+    api_groups = ["discovery.k8s.io"]
+    resources  = ["endpointslices"]
+    verbs      = ["get", "list", "watch"]
+  }
+  rule {
     api_groups = [""]
     resources  = ["pods", "services", "endpoints", "secrets", "configmaps"]
     verbs      = ["get", "list", "watch", "create", "update", "patch"]
@@ -376,19 +381,9 @@ resource "kubernetes_deployment" "nginx_ingress" {
           name  = "nginx-ingress-controller"
           image = var.nginx_ingress_image
           args  = local.ingress_controller_args
-          resources {
-            requests = {
-              memory = "512Mi"
-              cpu    = "200m"
-            }
-            limits = {
-              memory = "1Gi"
-              cpu    = "500m"
-            }
-          }
 
           security_context {
-            allow_privilege_escalation = false
+            allow_privilege_escalation = true
             run_as_user                = 101
             capabilities {
               drop = ["ALL"]
