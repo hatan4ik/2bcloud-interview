@@ -1,4 +1,151 @@
-# --- 1. Local Variables and Data Sources ---
+
+variable "resource_group_name" {
+  description = "Name of the existing resource group"
+  type        = string
+}
+
+variable "vnet_name" {
+  description = "Name of the virtual network"
+  type        = string
+}
+
+variable "vnet_address_space" {
+  description = "Address space for the virtual network"
+  type        = string
+}
+
+variable "subnets" {
+  description = "Map of subnet configurations"
+  type = map(object({
+    name              = string
+    address_prefix    = string
+    service_endpoints = optional(list(string))
+  }))
+}
+
+variable "nsgs" {
+  description = "Map of network security group configurations"
+  type = map(object({
+    name = string
+    rules = list(object({
+      name                       = string
+      priority                   = number
+      direction                  = string
+      access                     = string
+      protocol                   = string
+      source_port_range          = string
+      destination_port_range     = string
+      source_address_prefix      = string
+      destination_address_prefix = string
+    }))
+  }))
+}
+
+
+# Variables
+variable "namespace" {
+  default = "myapp"
+}
+
+variable "nginx_ingress_image" {
+  default = ""
+}
+
+variable "myapp_image" {
+  default = ""
+}
+
+variable "replicas" {
+  type        = number
+  default     = 1
+  description = "Number of replicas for the deployment"
+
+  validation {
+    condition     = var.replicas > 0
+    error_message = "Replica count must be greater than 0."
+  }
+}
+
+
+variable "resource_prefix" {
+  type        = string
+  description = "Prefix for resource names"
+  default     = "myapp"
+}
+
+variable "common_labels" {
+  type        = map(string)
+  description = "Common labels to be applied to all resources"
+  default     = {}
+}
+
+variable "ingress_replicas" {
+  type        = number
+  description = "Number of replicas for the NGINX ingress controller"
+  default     = 1
+}
+
+
+variable "ingress_cpu_limit" {
+  type        = string
+  description = "CPU limit for the NGINX ingress controller"
+  default     = "200m"
+}
+
+variable "ingress_memory_limit" {
+  type        = string
+  description = "Memory limit for the NGINX ingress controller"
+  default     = "256Mi"
+}
+
+variable "ingress_cpu_request" {
+  type        = string
+  description = "CPU request for the NGINX ingress controller"
+  default     = "100m"
+}
+
+variable "ingress_memory_request" {
+  type        = string
+  description = "Memory request for the NGINX ingress controller"
+  default     = "128Mi"
+}
+
+variable "target_namespaces" {
+  type        = list(string)
+  description = "List of namespaces to create secrets in. Defaults to all namespaces if not specified."
+  default     = []
+}
+
+variable "app_namespace" {
+  type        = string
+  description = "Kubernetes namespace for the application"
+  default     = "default"
+}
+
+variable "kubernetes_version" {
+  type        = string
+  description = "AKS version"
+}
+
+variable "node_count" {
+  type        = number
+  description = "Number of nodes in the cluster"
+  default     = 1
+}
+
+variable "vm_size" {
+  type        = string
+  description = "VM size for the nodes"
+  default     = ""
+}
+
+
+#####################################
+#### Bellow is part of Modules folder
+variable "location" {
+  description = "Location of the resource group"
+  type        = string
+}# --- 1. Local Variables and Data Sources ---
 locals {
   dockerfile_hash  = filemd5("${path.module}/Dockerfile")
   source_code_hash = md5(join("", [for f in fileset("${path.module}/src", "**") : filemd5("${path.module}/src/${f}")]))
@@ -144,7 +291,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   network_profile {
     network_plugin    = "azure"
-    network_policy     = "calico"
+    network_policy     = "azure"
     service_cidr       = "172.244.0.0/16"
     dns_service_ip     = "172.244.0.10"
     #load_balancer_sku = "standard"
@@ -281,21 +428,34 @@ resource "azurerm_public_ip" "ingress_public_ip" {
 }
 
 # --- 10. Kubernetes Namespace for Ingress NGINX ---
-# Look at helm deployment for more information
+resource "kubernetes_namespace" "ingress_nginx" {
+  metadata {
+    name = "ingress-nginx"
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+resource "kubernetes_namespace" "app_namespace" {
+  metadata {
+    name = var.app_namespace
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
 # --- 11. Define Service Account for NGINX Ingress ---
 resource "kubernetes_service_account" "nginx_ingress_sa" {
   metadata {
     name      = "${local.resource_prefix}-nginx-ingress-serviceaccount"
-    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
   }
-  depends_on = [helm_release.ingress_nginx]
+  depends_on = [kubernetes_namespace.ingress_nginx]
 }
 
 # Define Role for NGINX Ingress
 resource "kubernetes_role" "nginx_ingress_role" {
   metadata {
     name      = "${local.resource_prefix}-nginx-ingress-role"
-    namespace =  helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
   }
 
   rule {
@@ -315,7 +475,7 @@ resource "kubernetes_role" "nginx_ingress_role" {
 resource "kubernetes_role_binding" "nginx_ingress_role_binding" {
   metadata {
     name      = "${local.resource_prefix}-nginx-ingress-role-binding"
-    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
   }
 
   subject {
@@ -455,7 +615,7 @@ resource "null_resource" "build_and_push_image" {
 resource "kubernetes_deployment" "nginx_ingress" {
   metadata {
     name      = "${var.resource_prefix}-nginx-ingress"
-    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
     labels    = merge(local.ingress_labels, local.common_labels)
   }
 
@@ -503,14 +663,14 @@ resource "kubernetes_deployment" "nginx_ingress" {
       }
     }
   }
-  depends_on = [helm_release.ingress_nginx, kubernetes_config_map.nginx_ingress_config]
+  depends_on = [kubernetes_namespace.ingress_nginx, kubernetes_config_map.nginx_ingress_config]
 }
 
 # --- 14. NGINX Ingress Service ---
 resource "kubernetes_service" "nginx_ingress_controller" {
   metadata {
     name      = "nginx-ingress-controller"
-    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
     labels    = merge(local.ingress_labels, local.common_labels)
     annotations = {
       "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
@@ -549,7 +709,7 @@ resource "kubernetes_service" "nginx_ingress_controller" {
 resource "kubernetes_config_map" "nginx_ingress_config" {
   metadata {
     name      = "${local.resource_prefix}-nginx-ingress-config"
-    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
     labels    = merge(local.ingress_labels, local.common_labels)
   }
 
@@ -562,88 +722,96 @@ resource "kubernetes_config_map" "nginx_ingress_config" {
 
 
 # --- 15. MyApp Deployment and Service ---
-# resource "kubernetes_deployment" "myapp" {
-#   metadata {
-#     name      = "myapp"
-#     namespace = var.app_namespace
-#     labels    = local.common_labels
-#   }
+resource "kubernetes_deployment" "myapp" {
+  metadata {
+    name      = "myapp"
+    namespace = var.app_namespace
+    labels    = local.common_labels
+  }
 
-#   spec {
-#     replicas = var.replicas
-#     selector {
-#       match_labels = local.common_labels
-#     }
+  spec {
+    replicas = var.replicas
+    selector {
+      match_labels = local.common_labels
+    }
 
-#     template {
-#       metadata {
-#         labels = local.common_labels
-#       }
+    template {
+      metadata {
+        labels = local.common_labels
+      }
 
-#       spec {
-#         image_pull_secrets {
-#           name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
-#         }
+      spec {
+        image_pull_secrets {
+          name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
+        }
 
-#         container {
-#           name  = "myapp"
-#           image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
-#           port {
-#             container_port = 3000
-#             protocol       = "TCP"
-#           }
-#         }
-#       }
-#     }
-#   }
+        container {
+          name  = "myapp"
+          image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
+          port {
+            container_port = 3000
+            protocol       = "TCP"
+          }
+        }
+      }
+    }
+  }
 
-#   depends_on = [azurerm_kubernetes_cluster.aks,
-#   helm_release.ingress_nginx,
-#   null_resource.build_and_push_image]
+  depends_on = [azurerm_kubernetes_cluster.aks,
+    kubernetes_service.myapp,
+  null_resource.build_and_push_image]
+}
 
-#   spec {
-#     type = "ClusterIP"
+resource "kubernetes_service" "myapp" {
+  metadata {
+    name      = "myapp-service"
+    namespace = var.app_namespace
+    labels    = local.common_labels
+  }
 
-#     port {
-#       port        = 80
-#       target_port = 3000
-#       protocol    = "TCP"
-#       name        = "http"
-#     }
+  spec {
+    type = "ClusterIP"
 
-#     selector = {
-#       app = "myapp"
-#     }
-#   }
-# }
+    port {
+      port        = 80
+      target_port = 3000
+      protocol    = "TCP"
+      name        = "http"
+    }
+
+    selector = {
+      app = "myapp"
+    }
+  }
+}
 
 # --- 16. Ingress Configuration for MyApp ---
-# resource "kubernetes_ingress" "myapp_ingress" {
-#   metadata {
-#     name      = "${var.resource_prefix}-nginx-ingress"
-#     namespace = helm_release.ingress_nginx.metadata[0].namespace
-#     annotations = {
-#       "kubernetes.io/ingress.class" = "nginx"
-#     }
-#     labels = merge(local.ingress_labels, local.common_labels)
-#   }
+resource "kubernetes_ingress" "myapp_ingress" {
+  metadata {
+    name      = "${var.resource_prefix}-nginx-ingress"
+    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class" = "nginx"
+    }
+    labels = merge(local.ingress_labels, local.common_labels)
+  }
 
-#   spec {
-#     rule {
-#       host = "myapp.yourdomain.com"
-#       http {
-#         path {
-#           path = "/"
-#           backend {
-#             service_name = kubernetes_service.myapp.metadata[0].name
-#             service_port = 80
-#           }
-#         }
-#       }
-#     }
-#   }
-#   depends_on = [helm_release.ingress_nginx, kubernetes_service.myapp]
-# }
+  spec {
+    rule {
+      host = "myapp.yourdomain.com"
+      http {
+        path {
+          path = "/"
+          backend {
+            service_name = kubernetes_service.myapp.metadata[0].name
+            service_port = 80
+          }
+        }
+      }
+    }
+  }
+  depends_on = [kubernetes_service.nginx_ingress_controller, kubernetes_service.myapp]
+}
 
 # --- 18. Verification and Testing ---
 resource "null_resource" "verify_app" {
@@ -655,5 +823,45 @@ resource "null_resource" "verify_app" {
     EOT
   }
 
-  depends_on = [helm_release.ingress_nginx, azurerm_kubernetes_cluster.aks]
+  #depends_on = [kubernetes_deployment.nginx_ingress, kubernetes_ingress.myapp_ingress, kubernetes_service.myapp]
+}
+# Outputs
+output "aks_cluster_name" {
+  value = azurerm_kubernetes_cluster.aks.name
+}
+output "acr_login_server" {
+  value = azurerm_container_registry.acr.login_server
+}
+
+output "key_vault_name" {
+  value = azurerm_key_vault.kv.name
+}
+
+# output "virtual_network_id" {
+#   value = azurerm_virtual_network.vnet.id
+# }
+
+# output "subnet_ids" {
+#   value = module.subnets.subnet_ids
+# }
+
+output "key_vault_id" {
+  value = azurerm_key_vault.kv.id
+}
+
+output "container_registry_id" {
+  value = azurerm_container_registry.acr.id
+}
+
+
+output "public_ip_address" {
+  value = azurerm_public_ip.ingress_public_ip.ip_address
+}
+
+output "public_ip_fqdn" {
+  value = azurerm_public_ip.ingress_public_ip.fqdn
+}
+output "aks_cluster_kube_config" {
+  value     = azurerm_kubernetes_cluster.aks.kube_config_raw
+  sensitive = true
 }

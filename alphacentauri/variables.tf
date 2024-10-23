@@ -118,7 +118,7 @@ variable "target_namespaces" {
 variable "app_namespace" {
   type        = string
   description = "Kubernetes namespace for the application"
-  default     = "default"
+  default     = "myapp"
 }
 
 variable "kubernetes_version" {
