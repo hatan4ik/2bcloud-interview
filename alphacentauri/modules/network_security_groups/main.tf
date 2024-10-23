@@ -1,6 +1,6 @@
 resource "azurerm_network_security_group" "nsgs" {
   for_each            = var.nsgs
-  name                = each.value.name
+  name                = each.key
   location            = var.location
   resource_group_name = var.resource_group_name
 
@@ -18,8 +18,4 @@ resource "azurerm_network_security_group" "nsgs" {
       destination_address_prefix = security_rule.value.destination_address_prefix
     }
   }
-}
-
-output "nsg_ids" {
-  value = { for k, v in azurerm_network_security_group.nsgs : k => v.id }
 }

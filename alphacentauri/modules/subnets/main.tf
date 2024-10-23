@@ -4,24 +4,35 @@ resource "azurerm_subnet" "subnets" {
   resource_group_name  = var.resource_group_name
   virtual_network_name = var.vnet_name
   address_prefixes     = [each.value.address_prefix]
-  service_endpoints    = each.value.service_endpoints
-  network_security_group_id = azurerm_network_security_group.nsgs[each.key].id
-  route_table_id       = azurerm_route_table.custom_routes.id
 
+  # Add the required service endpoints
+  service_endpoints = [
+    "Microsoft.ContainerRegistry",
+    "Microsoft.KeyVault",
+    "Microsoft.Storage",
+  ]
 }
 
-output "subnet_ids" {
-  value = { for k, v in azurerm_subnet.subnets : k => v.id }
+resource "azurerm_subnet_network_security_group_association" "nsg_assoc" {
+  for_each                = var.subnets
+  subnet_id               = azurerm_subnet.subnets[each.key].id
+  network_security_group_id = var.nsg_ids[each.key]  # Associate NSG dynamically
 }
 
 resource "azurerm_route_table" "custom_routes" {
   name                = "custom-routes"
   resource_group_name = var.resource_group_name
-  location            = data.azurerm_resource_group.main.location
+  location            = var.location
 
   route {
-    name                   = "default-route"
-    address_prefix         = "0.0.0.0/0"
-    next_hop_type          = "Internet"
+    name           = "default-route"
+    address_prefix = "0.0.0.0/0"
+    next_hop_type  = "Internet"
   }
+}
+
+resource "azurerm_subnet_route_table_association" "rt_assoc" {
+  for_each      = var.subnets
+  subnet_id     = azurerm_subnet.subnets[each.key].id
+  route_table_id = azurerm_route_table.custom_routes.id
 }

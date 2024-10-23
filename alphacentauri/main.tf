@@ -1,40 +1,3 @@
-resource "azurerm_subnet" "subnets" {
-  for_each             = var.subnets
-  name                 = each.value.name
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = var.vnet_name
-  address_prefixes     = [each.value.address_prefix]
-  service_endpoints    = each.value.service_endpoints
-}
-
-output "subnet_ids" {
-  value = { for k, v in azurerm_subnet.subnets : k => v.id }
-}
-resource "azurerm_network_security_group" "nsgs" {
-  for_each            = var.nsgs
-  name                = each.value.name
-  location            = data.azurerm_resource_group.main.location
-  resource_group_name = var.resource_group_name
-
-  dynamic "security_rule" {
-    for_each = each.value.rules
-    content {
-      name                       = security_rule.value.name
-      priority                   = security_rule.value.priority
-      direction                  = security_rule.value.direction
-      access                     = security_rule.value.access
-      protocol                   = security_rule.value.protocol
-      source_port_range          = security_rule.value.source_port_range
-      destination_port_range     = security_rule.value.destination_port_range
-      source_address_prefix      = security_rule.value.source_address_prefix
-      destination_address_prefix = security_rule.value.destination_address_prefix
-    }
-  }
-}
-
-output "nsg_ids" {
-  value = { for k, v in azurerm_network_security_group.nsgs : k => v.id }
-}
 # --- 1. Local Variables and Data Sources ---
 locals {
   dockerfile_hash  = filemd5("${path.module}/Dockerfile")
@@ -75,6 +38,13 @@ data "local_file" "image_tag" {
   depends_on = [null_resource.build_and_push_image]
 }
 
+data "azurerm_user_assigned_identity" "aks_identity" {
+  name                = "${azurerm_kubernetes_cluster.aks.name}-agentpool"
+  resource_group_name = azurerm_kubernetes_cluster.aks.node_resource_group
+}
+
+
+
 # --- 2. Random String and Network Resources ---
 resource "random_string" "random" {
   length  = 8
@@ -82,6 +52,7 @@ resource "random_string" "random" {
   upper   = false
 }
 
+# Create Virtual Network
 resource "azurerm_virtual_network" "vnet" {
   name                = "vnet-${random_string.random.result}"
   address_space       = [var.vnet_address_space]
@@ -89,18 +60,37 @@ resource "azurerm_virtual_network" "vnet" {
   resource_group_name = data.azurerm_resource_group.main.name
 }
 
-module "subnets" {
-  source              = "./modules/subnets"
+# Define Route Table for Subnets
+resource "azurerm_route_table" "custom_routes" {
+  name                = "custom-routes"
   resource_group_name = data.azurerm_resource_group.main.name
-  vnet_name           = azurerm_virtual_network.vnet.name
+  location            = data.azurerm_resource_group.main.location
+
+  route {
+    name           = "default-route"
+    address_prefix = "0.0.0.0/0"
+    next_hop_type  = "Internet"
+  }
+}
+
+# Call the network security group module
+module "network_security_groups" {
+  source              = "./modules/network_security_groups"
+  nsgs                = var.nsgs
+  resource_group_name = data.azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
   subnets             = var.subnets
 }
 
-module "nsgs" {
-  source              = "./modules/network_security_groups"
-  location            = data.azurerm_resource_group.main.location
+# Call the subnets module and pass NSG IDs and Route Table ID
+module "subnets" {
+  source              = "./modules/subnets"
+  subnets             = var.subnets
   resource_group_name = data.azurerm_resource_group.main.name
-  nsgs                = var.nsgs  # You need to define this variable
+  vnet_name           = azurerm_virtual_network.vnet.name
+  nsg_ids             = module.network_security_groups.nsg_ids  # <-- Automatically passes NSG IDs
+  route_table_id      = azurerm_route_table.custom_routes.id
+  location            = data.azurerm_resource_group.main.location
 }
 
 
@@ -154,9 +144,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
 
   network_profile {
     network_plugin    = "azure"
-    network_policy    = "azure"
-    service_cidr      = "172.244.0.0/16"
-    dns_service_ip    = "172.244.0.10"
     load_balancer_sku = "standard"
   }
 
@@ -176,13 +163,32 @@ resource "azurerm_role_assignment" "aks_network_contributor" {
   role_definition_name = "Network Contributor"
   scope                = data.azurerm_resource_group.main.id
 }
+resource "azurerm_role_assignment" "aks_vnet_network_contributor" {
+  scope                = azurerm_virtual_network.vnet.id
+  role_definition_name = "Network Contributor"
+  principal_id         = data.azurerm_user_assigned_identity.aks_identity.principal_id
+}
+resource "azurerm_role_assignment" "aks_node_rg_network_contributor" {
+  scope                = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${azurerm_kubernetes_cluster.aks.node_resource_group}"
+  role_definition_name = "Network Contributor"
+  principal_id         = data.azurerm_user_assigned_identity.aks_identity.principal_id
+}
 
 resource "azurerm_role_assignment" "aks_acr_pull" {
   role_definition_name = "AcrPull"
   scope                = azurerm_container_registry.acr.id
   principal_id         = azurerm_kubernetes_cluster.aks.kubelet_identity[0].object_id
+  depends_on = [azurerm_container_registry.acr]
 }
-
+resource "azurerm_role_assignment" "acr_sp_acr_push" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPush"
+  principal_id         = azuread_service_principal.acr_sp.object_id
+  depends_on = [
+    azurerm_container_registry.acr,
+    azuread_service_principal.acr_sp
+  ]
+}
 # Kubernetes secret for ACR pull
 resource "kubernetes_secret" "acr_pull_secret" {
   count = length(var.target_namespaces) > 0 ? length(var.target_namespaces) : 1
@@ -222,11 +228,9 @@ resource "null_resource" "update_kubeconfig" {
     aks_cluster_id = azurerm_kubernetes_cluster.aks.id
   }
   provisioner "local-exec" {
-    command = <<EOT
-    az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin
-    kubectl config get-contexts
-    kubectl config use-context ${azurerm_kubernetes_cluster.aks.name}
-  EOT
+    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin"
+    # kubectl config get-contexts
+    # kubectl config use-context ${azurerm_kubernetes_cluster.aks.name}
   }
   depends_on = [azurerm_kubernetes_cluster.aks]
 }
@@ -254,6 +258,15 @@ resource "azurerm_key_vault_secret" "acr_sp_secret" {
   key_vault_id = azurerm_key_vault.kv.id
 }
 
+resource "azurerm_role_assignment" "acr_sp_reader" {
+  principal_id   = azuread_service_principal.acr_sp.object_id
+  role_definition_name = "Reader"
+  scope          = azurerm_container_registry.acr.id
+   depends_on = [
+    azuread_service_principal.acr_sp
+   ]
+}
+
 # --- 9. Public IP for Ingress ---
 resource "azurerm_public_ip" "ingress_public_ip" {
   name                = "ingress-public-ip-${random_string.random.result}"
@@ -267,6 +280,13 @@ resource "azurerm_public_ip" "ingress_public_ip" {
 resource "kubernetes_namespace" "ingress_nginx" {
   metadata {
     name = "ingress-nginx"
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks]
+}
+
+resource "kubernetes_namespace" "app_namespace" {
+  metadata {
+    name = var.app_namespace
   }
   depends_on = [azurerm_kubernetes_cluster.aks]
 }
@@ -368,207 +388,6 @@ resource "kubernetes_cluster_role_binding" "nginx_ingress_cluster_role_binding" 
   }
 }
 
-# Define ConfigMap for NGINX Ingress Controller
-resource "kubernetes_config_map" "nginx_ingress_config" {
-  metadata {
-    name      = "${local.resource_prefix}-nginx-ingress-config"
-    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
-    labels    = merge(local.ingress_labels, local.common_labels)
-  }
-
-  data = {
-    "proxy-body-size"               = "4m"
-    "enable-underscores-in-headers" = "true"
-    # Add more configuration options as needed
-  }
-}
-
-# --- 13. Kubernetes NGINX Ingress Deployment ---
-resource "kubernetes_deployment" "nginx_ingress" {
-  metadata {
-    name      = "${var.resource_prefix}-nginx-ingress"
-    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
-    labels    = merge(local.ingress_labels, local.common_labels)
-  }
-
-  spec {
-    replicas = var.ingress_replicas
-
-    selector  {
-      match_labels = {
-        "app.kubernetes.io/name"     = "ingress-nginx"
-        "app.kubernetes.io/instance" = var.resource_prefix
-        "app.kubernetes.io/part-of"  = "ingress-nginx"
-      }
-    }
-
-    template {
-      metadata {
-        labels      = {
-          "app.kubernetes.io/name"     = "ingress-nginx"
-          "app.kubernetes.io/instance" = var.resource_prefix
-          "app.kubernetes.io/part-of"  = "ingress-nginx"
-        }
-        annotations = {
-          "prometheus.io/port"   = "10254"
-          "prometheus.io/scrape" = "true"
-        }
-      }
-
-      spec {
-        service_account_name = kubernetes_service_account.nginx_ingress_sa.metadata[0].name
-
-        container {
-          name  = "nginx-ingress-controller"
-          image = var.nginx_ingress_image
-          args  = local.ingress_controller_args
-
-          security_context {
-            allow_privilege_escalation = true
-            run_as_user                = 101
-            capabilities {
-              drop = ["ALL"]
-              add  = ["NET_BIND_SERVICE"]
-            }
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [kubernetes_namespace.ingress_nginx, kubernetes_config_map.nginx_ingress_config]
-}
-
-# --- 14. NGINX Ingress Service ---
-resource "kubernetes_service" "nginx_ingress_controller" {
-  metadata {
-    name      = "nginx-ingress-controller"
-    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
-    labels    = merge(local.ingress_labels, local.common_labels)
-    annotations = {
-      "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
-    }
-  }
-
-  spec {
-    type = "LoadBalancer"
-
-    selector = {
-      "app.kubernetes.io/name"     = "ingress-nginx"
-      "app.kubernetes.io/instance" = var.resource_prefix
-      "app.kubernetes.io/part-of"  = "ingress-nginx"
-      }
-    
-    port {
-      name        = "http"
-      port        = 80
-      target_port = 80
-      protocol    = "TCP"
-    }
-
-    port  {
-      name        = "https"
-      port        = 443
-      target_port = 443
-      protocol    = "TCP"
-    }
-
-    load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
-  }
-  depends_on = [kubernetes_deployment.nginx_ingress]
-
-}
-
-# --- 15. MyApp Deployment and Service ---
-resource "kubernetes_deployment" "myapp" {
-  metadata {
-    name      = "myapp"
-    namespace = "default"
-    labels    = local.common_labels
-  }
-
-  spec {
-    replicas = var.replicas
-    selector {
-      match_labels = local.common_labels
-    }
-
-    template {
-      metadata {
-        labels = local.common_labels
-      }
-
-      spec {
-        image_pull_secrets {
-          name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
-        }
-
-        container {
-          name  = "myapp"
-          image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
-          port {
-            container_port = 3000
-            protocol       = "TCP"
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [azurerm_kubernetes_cluster.aks, kubernetes_service.myapp, null_resource.build_and_push_image]
-}
-
-resource "kubernetes_service" "myapp" {
-  metadata {
-    name      = "myapp-service"
-    namespace = "default"
-    labels    = local.common_labels
-  }
-
-  spec {
-    type = "ClusterIP"
-
-    port {
-      port        = 80
-      target_port = 3000
-      protocol    = "TCP"
-      name        = "http"
-    }
-
-    selector = {
-      app = "myapp"
-    }
-  }
-}
-
-# --- 16. Ingress Configuration for MyApp ---
-resource "kubernetes_ingress" "myapp_ingress" {
-  metadata {
-    name      = "${var.resource_prefix}-nginx-ingress"
-    namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class" = "nginx"
-    }
-    labels = merge(local.ingress_labels, local.common_labels)
-  }
-
-  spec {
-    rule {
-      host = "myapp.yourdomain.com"
-      http {
-        path {
-          path = "/"
-          backend {
-            service_name = kubernetes_service.myapp.metadata[0].name
-            service_port = 80
-          }
-        }
-      }
-    }
-  }
-
-  depends_on = [kubernetes_service.nginx_ingress_controller, kubernetes_service.myapp]
-}
 
 # --- 17. Build and Push Docker Image to ACR ---
 resource "null_resource" "build_and_push_image" {
@@ -599,36 +418,33 @@ resource "null_resource" "build_and_push_image" {
 
       fetch_credentials() {
         local sp_credentials=$(az keyvault secret show --vault-name $VAULT_NAME --name acr-sp-secret --query value -o tsv)
+        echo "Service Principal credentials: $sp_credentials"
         CLIENT_ID=$(echo $sp_credentials | jq -r .clientId)
         CLIENT_SECRET=$(echo $sp_credentials | jq -r .clientSecret)
+        echo "CLIENT_ID: $CLIENT_ID"
+        echo "CLIENT_SECRET: (masked)"
       }
-
       login_to_azure() {
         az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
-        az account show --query id -o tsv
+       #az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID --allow-no-subscriptions
+       #az account show --query id -o tsv
       }
-
       login_to_acr() {
         az acr login --name $ACR_NAME
       }
-
       build_and_push_image() {
         docker build -t $IMAGE_NAME .
         docker push $IMAGE_NAME
       }
-
       validate_image_pull() {
         docker pull $IMAGE_NAME
       }
-
       cleanup_local_image() {
         docker rmi $IMAGE_NAME
       }
-
       save_image_tag() {
         echo $IMAGE_TAG > ./image_tag.txt
       }
-
       main
     EOT
   }
@@ -636,9 +452,215 @@ resource "null_resource" "build_and_push_image" {
   depends_on = [
     azurerm_container_registry.acr,
     azurerm_key_vault_secret.acr_sp_secret,
-    azurerm_kubernetes_cluster.aks
+    azurerm_kubernetes_cluster.aks,
+    azurerm_role_assignment.acr_sp_reader,
+    azurerm_role_assignment.acr_sp_acr_push,
+    null_resource.update_kubeconfig
   ]
 }
+
+
+    #--- 13. Kubernetes NGINX Ingress Deployment ---
+    resource "kubernetes_deployment" "nginx_ingress" {
+    metadata {
+        name      = "${var.resource_prefix}-nginx-ingress"
+        namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+        labels    = merge(local.ingress_labels, local.common_labels)
+    }
+
+    spec {
+        replicas = var.ingress_replicas
+
+        selector  {
+        match_labels = {
+            "app.kubernetes.io/name"     = "ingress-nginx"
+            "app.kubernetes.io/instance" = var.resource_prefix
+            "app.kubernetes.io/part-of"  = "ingress-nginx"
+        }
+        }
+
+        template {
+          metadata {
+            labels      = {
+              "app.kubernetes.io/name"     = "ingress-nginx"
+              "app.kubernetes.io/instance" = var.resource_prefix
+              "app.kubernetes.io/part-of"  = "ingress-nginx"
+            }
+            annotations = {
+              "prometheus.io/port"   = "10254"
+              "prometheus.io/scrape" = "true"
+            }
+        }
+
+        spec {
+          service_account_name = kubernetes_service_account.nginx_ingress_sa.metadata[0].name
+
+          container {
+            name  = "nginx-ingress-controller"
+            image = var.nginx_ingress_image
+            args  = local.ingress_controller_args
+
+            security_context {
+                allow_privilege_escalation = true
+                run_as_user                = 101
+                capabilities {
+                drop = ["ALL"]
+                add  = ["NET_BIND_SERVICE"]
+                }
+             }
+           }
+         }
+       }
+     }
+  depends_on = [kubernetes_namespace.ingress_nginx, kubernetes_config_map.nginx_ingress_config]
+}
+
+    # --- 14. NGINX Ingress Service ---
+    resource "kubernetes_service" "nginx_ingress_controller" {
+    metadata {
+        name      = "nginx-ingress-controller"
+        namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+        labels    = merge(local.ingress_labels, local.common_labels)
+        annotations = {
+        "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
+        }
+    }
+
+    spec {
+        type = "LoadBalancer"
+
+        selector = {
+        "app.kubernetes.io/name"     = "ingress-nginx"
+        "app.kubernetes.io/instance" = var.resource_prefix
+        "app.kubernetes.io/part-of"  = "ingress-nginx"
+        }
+        
+        port {
+        name        = "http"
+        port        = 80
+        target_port = 80
+        protocol    = "TCP"
+        }
+
+        port  {
+        name        = "https"
+        port        = 443
+        target_port = 443
+        protocol    = "TCP"
+        }
+
+        load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
+    }
+    depends_on = [kubernetes_deployment.nginx_ingress]
+
+    }
+    # Define ConfigMap for NGINX Ingress Controller
+    resource "kubernetes_config_map" "nginx_ingress_config" {
+    metadata {
+        name      = "${local.resource_prefix}-nginx-ingress-config"
+        namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+        labels    = merge(local.ingress_labels, local.common_labels)
+    }
+
+    data = {
+        "proxy-body-size"               = "4m"
+        "enable-underscores-in-headers" = "true"
+        # Add more configuration options as needed
+    }
+    }
+
+
+    # --- 15. MyApp Deployment and Service ---
+    resource "kubernetes_deployment" "myapp" {
+    metadata {
+        name      = "myapp"
+        namespace =  var.app_namespace 
+        labels    = local.common_labels
+    }
+
+    spec {
+        replicas = var.replicas
+        selector {
+        match_labels = local.common_labels
+        }
+
+        template {
+        metadata {
+            labels = local.common_labels
+        }
+
+        spec {
+            image_pull_secrets {
+            name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
+            }
+
+            container {
+            name  = "myapp"
+            image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
+            port {
+                container_port = 3000
+                protocol       = "TCP"
+            }
+            }
+        }
+        }
+    }
+
+    depends_on = [azurerm_kubernetes_cluster.aks,
+    kubernetes_service.myapp,
+    null_resource.build_and_push_image]
+    }
+
+    resource "kubernetes_service" "myapp" {
+    metadata {
+        name      = "myapp-service"
+        namespace = var.app_namespace
+        labels    = local.common_labels
+    }
+
+    spec {
+        type = "ClusterIP"
+
+        port {
+        port        = 80
+        target_port = 3000
+        protocol    = "TCP"
+        name        = "http"
+        }
+
+        selector = {
+        app = "myapp"
+        }
+    }
+    }
+
+    # --- 16. Ingress Configuration for MyApp ---
+    resource "kubernetes_ingress" "myapp_ingress" {
+    metadata {
+        name      = "${var.resource_prefix}-nginx-ingress"
+        namespace = kubernetes_namespace.ingress_nginx.metadata[0].name
+        annotations = {
+        "kubernetes.io/ingress.class" = "nginx"
+        }
+        labels = merge(local.ingress_labels, local.common_labels)
+    }
+
+    spec {
+        rule {
+        host = "myapp.yourdomain.com"
+        http {
+            path {
+            path = "/"
+            backend {
+                service_name = kubernetes_service.myapp.metadata[0].name
+                service_port = 80
+            }
+            }
+        }
+        }
+    }
+    depends_on = [kubernetes_service.nginx_ingress_controller, kubernetes_service.myapp]
+    }
 
 # --- 18. Verification and Testing ---
 resource "null_resource" "verify_app" {
@@ -650,5 +672,5 @@ resource "null_resource" "verify_app" {
     EOT
   }
 
-  depends_on = [kubernetes_deployment.nginx_ingress, kubernetes_ingress.myapp_ingress, kubernetes_service.myapp]
+  #depends_on = [kubernetes_deployment.nginx_ingress, kubernetes_ingress.myapp_ingress, kubernetes_service.myapp]
 }

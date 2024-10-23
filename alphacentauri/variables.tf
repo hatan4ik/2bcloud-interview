@@ -137,3 +137,11 @@ variable "vm_size" {
   description = "VM size for the nodes"
   default     = ""
 }
+
+
+#####################################
+#### Bellow is part of Modules folder
+variable "location" {
+  description = "Location of the resource group"
+  type        = string
+}
