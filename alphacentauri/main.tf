@@ -605,6 +605,3 @@ resource "null_resource" "verify_app" {
 
   depends_on = [kubernetes_ingress_v1.myapp_ingress, helm_release.ingress_nginx]
 }
-
-  depends_on = [helm_release.ingress_nginx, azurerm_kubernetes_cluster.aks]
-}
