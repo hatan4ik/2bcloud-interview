@@ -594,11 +594,17 @@ resource "kubernetes_ingress_v1" "myapp_ingress" {
 resource "null_resource" "verify_app" {
   provisioner "local-exec" {
     command = <<EOT
-      export INGRESS_IP=$(kubectl get svc -n ingress-nginx nginx-ingress-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      # Get the public IP of the NGINX Ingress Controller
+      INGRESS_IP=$(kubectl get svc -n ${helm_release.ingress_nginx.metadata[0].namespace} nginx-ingress-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
       echo "Nginx Ingress Controller Public IP: $INGRESS_IP"
+      
+      # Perform a curl request to verify the application is accessible via NGINX Ingress
       curl http://$INGRESS_IP
     EOT
   }
+
+  depends_on = [kubernetes_ingress_v1.myapp_ingress, helm_release.ingress_nginx]
+}
 
   depends_on = [helm_release.ingress_nginx, azurerm_kubernetes_cluster.aks]
 }
