@@ -462,173 +462,50 @@ resource "null_resource" "build_and_push_image" {
 }
 
 
-#--- 13. Kubernetes NGINX Ingress Deployment ---
-# resource "kubernetes_deployment" "nginx_ingress" {
-#   metadata {
-#     name      = "${var.resource_prefix}-nginx-ingress"
-#     namespace = helm_release.ingress_nginx.metadata[0].namespace
-#     labels    = merge(local.ingress_labels, local.common_labels)
-#   }
+#--- 15. MyApp Deployment and Service ---
+resource "kubernetes_deployment" "myapp" {
+  metadata {
+    name      = "myapp"
+    namespace = var.app_namespace
+    labels    = local.common_labels
+  }
 
-#   spec {
-#     replicas = var.ingress_replicas
+  spec {
+    replicas = var.replicas
+    selector {
+      match_labels = local.common_labels
+    }
 
-#     selector {
-#       match_labels = {
-#         "app.kubernetes.io/name"     = "ingress-nginx"
-#         "app.kubernetes.io/instance" = var.resource_prefix
-#         "app.kubernetes.io/part-of"  = "ingress-nginx"
-#       }
-#     }
+    template {
+      metadata {
+        labels = local.common_labels
+      }
 
-#     template {
-#       metadata {
-#         labels = {
-#           "app.kubernetes.io/name"     = "ingress-nginx"
-#           "app.kubernetes.io/instance" = var.resource_prefix
-#           "app.kubernetes.io/part-of"  = "ingress-nginx"
-#         }
-#         annotations = {
-#           "prometheus.io/port"   = "10254"
-#           "prometheus.io/scrape" = "true"
-#         }
-#       }
+      spec {
+        image_pull_secrets {
+          name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
+        }
 
-#       spec {
-#         service_account_name = kubernetes_service_account.nginx_ingress_sa.metadata[0].name
+        container {
+          name  = "myapp"
+          image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
+          port {
+            container_port = 3000
+            protocol       = "TCP"
+          }
+        }
+      }
+    }
+  }
 
-#         container {
-#           name  = "nginx-ingress-controller"
-#           image = var.nginx_ingress_image
-#           args  = local.ingress_controller_args
+  depends_on = [azurerm_kubernetes_cluster.aks,
+  helm_release.ingress_nginx,
+  null_resource.build_and_push_image,
+  helm_release.ingress_nginx
+  ]
+}
 
-#           security_context {
-#             allow_privilege_escalation = true
-#             run_as_user                = 101
-#             capabilities {
-#               drop = ["ALL"]
-#               add  = ["NET_BIND_SERVICE"]
-#             }
-#           }
-#         }
-#       }
-#     }
-#   }
-#   depends_on = [helm_release.ingress_nginx, kubernetes_config_map.nginx_ingress_config]
-# }
-
-# # --- 14. NGINX Ingress Service ---
-# resource "kubernetes_service" "nginx_ingress_controller" {
-#   metadata {
-#     name      = "nginx-ingress-controller"
-#     namespace = helm_release.ingress_nginx.metadata[0].namespace
-#     labels    = merge(local.ingress_labels, local.common_labels)
-#     annotations = {
-#       "service.beta.kubernetes.io/azure-load-balancer-resource-group" = data.azurerm_resource_group.main.name
-#     }
-#   }
-
-#   spec {
-#     type = "LoadBalancer"
-
-#     selector = {
-#       "app.kubernetes.io/name"     = "ingress-nginx"
-#       "app.kubernetes.io/instance" = var.resource_prefix
-#       "app.kubernetes.io/part-of"  = "ingress-nginx"
-#     }
-
-#     port {
-#       name        = "http"
-#       port        = 80
-#       target_port = 80
-#       protocol    = "TCP"
-#     }
-
-#     port {
-#       name        = "https"
-#       port        = 443
-#       target_port = 443
-#       protocol    = "TCP"
-#     }
-
-#     load_balancer_ip = azurerm_public_ip.ingress_public_ip.ip_address
-#   }
-#   depends_on = [kubernetes_deployment.nginx_ingress]
-
-# }
-# # Define ConfigMap for NGINX Ingress Controller
-# resource "kubernetes_config_map" "nginx_ingress_config" {
-#   metadata {
-#     name      = "${local.resource_prefix}-nginx-ingress-config"
-#     namespace = helm_release.ingress_nginx.metadata[0].namespace
-#     labels    = merge(local.ingress_labels, local.common_labels)
-#   }
-
-#   data = {
-#     "proxy-body-size"               = "4m"
-#     "enable-underscores-in-headers" = "true"
-#     # Add more configuration options as needed
-#   }
-# }
-
-
-# --- 15. MyApp Deployment and Service ---
-# resource "kubernetes_deployment" "myapp" {
-#   metadata {
-#     name      = "myapp"
-#     namespace = var.app_namespace
-#     labels    = local.common_labels
-#   }
-
-#   spec {
-#     replicas = var.replicas
-#     selector {
-#       match_labels = local.common_labels
-#     }
-
-#     template {
-#       metadata {
-#         labels = local.common_labels
-#       }
-
-#       spec {
-#         image_pull_secrets {
-#           name = length(var.target_namespaces) > 0 ? kubernetes_secret.acr_pull_secret[0].metadata[0].name : "acr-pull-secret"
-#         }
-
-#         container {
-#           name  = "myapp"
-#           image = "${azurerm_container_registry.acr.login_server}/myapp:${local.image_tag}"
-#           port {
-#             container_port = 3000
-#             protocol       = "TCP"
-#           }
-#         }
-#       }
-#     }
-#   }
-
-#   depends_on = [azurerm_kubernetes_cluster.aks,
-#   helm_release.ingress_nginx,
-#   null_resource.build_and_push_image]
-
-#   spec {
-#     type = "ClusterIP"
-
-#     port {
-#       port        = 80
-#       target_port = 3000
-#       protocol    = "TCP"
-#       name        = "http"
-#     }
-
-#     selector = {
-#       app = "myapp"
-#     }
-#   }
-# }
-
-# --- 16. Ingress Configuration for MyApp ---
+# ##--- 16. Ingress Configuration for MyApp ---
 # resource "kubernetes_ingress" "myapp_ingress" {
 #   metadata {
 #     name      = "${var.resource_prefix}-nginx-ingress"
@@ -655,6 +532,63 @@ resource "null_resource" "build_and_push_image" {
 #   }
 #   depends_on = [helm_release.ingress_nginx, kubernetes_service.myapp]
 # }
+
+# Define the Kubernetes Service for MyApp
+resource "kubernetes_service" "myapp" {
+  metadata {
+    name      = "myapp-service"
+    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    labels    = local.common_labels
+  }
+
+  spec {
+    selector = local.common_labels
+
+    port {
+      port        = 80
+      target_port = 3000
+      protocol    = "TCP"
+      name        = "http"
+    }
+
+    type = "ClusterIP" # Internal service accessible by NGINX Ingress
+  }
+}
+
+# Define the Kubernetes Ingress for MyApp
+# Define the Kubernetes Ingress for MyApp using networking.k8s.io API
+resource "kubernetes_ingress_v1" "myapp_ingress" {
+  metadata {
+    name      = "myapp-ingress"
+    namespace = helm_release.ingress_nginx.metadata[0].namespace
+    annotations = {
+      "kubernetes.io/ingress.class" = "nginx"
+    }
+  }
+
+  spec {
+    rule {
+      host = "myapp.yourdomain.com" # Your domain
+      http {
+        path {
+          path = "/"
+          path_type = "Prefix"  # Required in networking.k8s.io/v1
+          backend {
+            service {
+              name = kubernetes_service.myapp.metadata[0].name
+              port {
+                number = 80  # Ingress will route traffic to service port 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [kubernetes_service.myapp, helm_release.ingress_nginx]
+}
+
 
 # --- 18. Verification and Testing ---
 resource "null_resource" "verify_app" {
