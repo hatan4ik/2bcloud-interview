@@ -147,8 +147,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
     network_policy     = "calico"
     service_cidr       = "172.244.0.0/16"
     dns_service_ip     = "172.244.0.10"
-    #load_balancer_sku = "standard"
-
+    load_balancer_sku = "standard"
   }
 
   depends_on = [azurerm_container_registry.acr]
