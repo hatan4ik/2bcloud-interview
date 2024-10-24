@@ -20,7 +20,5 @@ resource "helm_release" "ingress_nginx" {
      value = data.azurerm_resource_group.main.name
    }
 
-  # depends_on = [azurerm_kubernetes_cluster.aks,
-  # azurerm_public_ip.ingress_public_ip
-  #]
+   depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
 }
