@@ -8,6 +8,10 @@ resource "helm_release" "ingress_nginx" {
   create_namespace = true
 
   set {
+    name  = "controller.extraArgs"
+    value = "{--set-namespace-labels=name=nginx-ingress,part-of=ingress-nginx,app.kubernetes.io/name=ingress-nginx}"
+  }
+  set {
     name  = "controller.service.loadBalancerIP"
     value = azurerm_public_ip.ingress_public_ip.ip_address
   }
@@ -20,5 +24,5 @@ resource "helm_release" "ingress_nginx" {
      value = data.azurerm_resource_group.main.name
    }
 
-   depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
+   depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip, ]
 }
