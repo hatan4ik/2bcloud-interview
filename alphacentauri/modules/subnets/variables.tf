@@ -11,10 +11,10 @@ variable "nsg_ids" {
   type        = map(string)
 }
 
-variable "route_table_id" {
-  description = "Route table ID to associate with subnets"
-  type        = string
-}
+# variable "route_table_id" {
+#   description = "Route table ID to associate with subnets"
+#   type        = string
+# }
 
 variable "resource_group_name" {
   description = "Resource group name"
@@ -28,5 +28,11 @@ variable "vnet_name" {
 
 variable "location" {
   description = "Azure location"
+  type        = string
+}
+
+variable "vnet_address_prefix" {
+  default     = "10.0.0.0/16"
+  description = "Virtual network address prefix"
   type        = string
 }
