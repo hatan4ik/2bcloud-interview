@@ -73,20 +73,23 @@ fi
 APP_SERVICE_NAME=$(kubectl get svc -n "$APP_NAMESPACE" -o jsonpath="{.items[0].metadata.name}")
 APP_SERVICE_PORT=$(kubectl get svc "$APP_SERVICE_NAME" -n "$APP_NAMESPACE" -o jsonpath="{.spec.ports[0].port}")
 
-# Check if there is at least one pod in the application namespace
-PODS_AVAILABLE=$(kubectl get pods -n "$APP_NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
-if [[ -z "$PODS_AVAILABLE" ]]; then
-  echo "Error: No pods found in the namespace $APP_NAMESPACE. Skipping internal connectivity test."
-else
-  # Choose the first available pod with curl for testing internal connectivity
-  for TEST_POD in $PODS_AVAILABLE; do
-    if kubectl exec -n "$APP_NAMESPACE" "$TEST_POD" -- which curl &>/dev/null; then
-      echo "Testing internal connectivity to the application on ClusterIP ($APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT)..."
-      kubectl exec -n "$APP_NAMESPACE" "$TEST_POD" -- curl -s -o /dev/null -w "%{http_code}" "http://$APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT" || echo "Error: Internal connectivity to the application failed."
-      break
-    fi
-  done
-fi
+# Perform internal connectivity test using a temporary pod with curl
+echo "Testing internal connectivity in namespace $APP_NAMESPACE..."
+
+kubectl run internal-test --image=alpine:3.13 -n "$APP_NAMESPACE" --restart=Never -- sh -c "
+  apk add --no-cache curl >/dev/null &&
+  echo 'Testing internal connectivity to ClusterIP ($APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT)...' &&
+  curl -v http://$APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT
+
+  # Check FQDN if exists and test connectivity
+  APP_FQDN=\$(kubectl get ingress -n \"$APP_NAMESPACE\" -o jsonpath='{.items[0].spec.rules[0].host}' 2>/dev/null || echo '')
+  if [ -n \"\$APP_FQDN\" ]; then
+    echo 'Testing internal connectivity to FQDN (\$APP_FQDN)...'
+    curl -v http://\$APP_FQDN
+  else
+    echo 'No FQDN found in Ingress configuration for the application.'
+  fi
+" && kubectl delete pod internal-test -n "$APP_NAMESPACE"
 
 # Check if service has a LoadBalancer IP
 APP_LB_IP=$(kubectl get svc "$APP_SERVICE_NAME" -n "$APP_NAMESPACE" -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || echo "")
@@ -96,14 +99,14 @@ if [[ -n "$APP_LB_IP" ]]; then
 
   # Test external connectivity to LoadBalancer IP
   echo "Testing external connectivity to LoadBalancer IP ($APP_LB_IP)..."
-  curl -I "http://$APP_LB_IP:$APP_SERVICE_PORT" || echo "Error: External connectivity to LoadBalancer IP failed."
+  curl -v "http://$APP_LB_IP:$APP_SERVICE_PORT"
 
   # Verify DNS if FQDN is set for the application
   APP_FQDN=$(kubectl get ingress -n "$APP_NAMESPACE" -o jsonpath="{.items[0].spec.rules[0].host}" 2>/dev/null || echo "")
   if [[ -n "$APP_FQDN" ]]; then
     echo "Application FQDN detected: $APP_FQDN"
     echo "Testing external connectivity to FQDN ($APP_FQDN)..."
-    curl -I "http://$APP_FQDN" || echo "Error: External connectivity to FQDN failed."
+    curl -v "http://$APP_FQDN"
   else
     echo "No FQDN found in Ingress configuration for the application."
   fi
