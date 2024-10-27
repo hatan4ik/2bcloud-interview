@@ -79,16 +79,7 @@ echo "Testing internal connectivity in namespace $APP_NAMESPACE..."
 kubectl run internal-test --image=alpine:3.13 -n "$APP_NAMESPACE" --restart=Never -- sh -c "
   apk add --no-cache curl >/dev/null &&
   echo 'Testing internal connectivity to ClusterIP ($APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT)...' &&
-  curl -v http://$APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT
-
-  # Check FQDN if exists and test connectivity
-  APP_FQDN=\$(kubectl get ingress -n \"$APP_NAMESPACE\" -o jsonpath='{.items[0].spec.rules[0].host}' 2>/dev/null || echo '')
-  if [ -n \"\$APP_FQDN\" ]; then
-    echo 'Testing internal connectivity to FQDN (\$APP_FQDN)...'
-    curl -v http://\$APP_FQDN
-  else
-    echo 'No FQDN found in Ingress configuration for the application.'
-  fi
+  curl -s -o /dev/null -w \"%{http_code}\" http://$APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT || echo 'Error: Internal connectivity to the application failed.'
 " && kubectl delete pod internal-test -n "$APP_NAMESPACE"
 
 # Check if service has a LoadBalancer IP
