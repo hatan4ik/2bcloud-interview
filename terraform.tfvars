@@ -10,7 +10,7 @@ vm_size            = "Standard_D2_v2"
 replicas      = 1
 app_namespace = "myapp"
 
-target_namespaces = ["myapp", "monitoring"]
+target_namespaces = ["myapp", "default"]
 
 subnets = {
   aks = {
