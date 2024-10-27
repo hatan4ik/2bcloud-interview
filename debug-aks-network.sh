@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Exit on errors
+# Ensure we exit on errors
 set -euo pipefail
 
 # Fetch the current subscription ID
@@ -36,78 +36,79 @@ echo "Main AKS Resource Group: $MAIN_RESOURCE_GROUP"
 MC_RESOURCE_GROUP=$(az aks show --name "$CLUSTER_NAME" --resource-group "$MAIN_RESOURCE_GROUP" --query "nodeResourceGroup" -o tsv)
 echo "Using AKS Node Resource Group: $MC_RESOURCE_GROUP"
 
-# Check connectivity to the AKS cluster
-echo "Checking AKS connectivity..."
-kubectl cluster-info || { echo "Error: Unable to connect to AKS cluster"; exit 1; }
+# Set context to AKS cluster
+echo "Setting Kubernetes context..."
+az aks get-credentials --resource-group "$MAIN_RESOURCE_GROUP" --name "$CLUSTER_NAME" --overwrite-existing --admin
 
-# Define the namespaces to inspect for NGINX Ingress
-NAMESPACES=("default" "kube-system" "myapp" "monitoring")
+# Get all namespaces
+echo "Listing namespaces..."
+NAMESPACES=$(kubectl get namespaces -o jsonpath="{.items[*].metadata.name}")
 
-# Check NGINX Ingress Controller status and LoadBalancer IP
-for NS in "${NAMESPACES[@]}"; do
-  echo "Checking NGINX Ingress Controller in namespace: $NS"
-  kubectl get pods -n "$NS" -l app.kubernetes.io/name=ingress-nginx || echo "No NGINX Ingress pods found in $NS."
-done
-
-# Fetch LoadBalancer IP for NGINX Ingress
-echo "Checking NGINX Ingress service in namespace: myapp"
-LB_IP=$(kubectl get svc -n myapp -l app.kubernetes.io/name=ingress-nginx -o jsonpath='{.items[?(@.spec.type=="LoadBalancer")].status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
-if [[ -z "$LB_IP" ]]; then
-  echo "Warning: No LoadBalancer IP assigned to NGINX Ingress in namespace myapp."
-else
-  echo "NGINX Ingress LoadBalancer IP in myapp: $LB_IP"
-fi
-
-# Check static IP address association in Azure
-STATIC_IP="52.166.53.86"  # Replace with your expected static IP
-echo "Verifying static IP $STATIC_IP in Azure..."
-az network public-ip list --query "[?ipAddress=='$STATIC_IP'].ipAddress" -o tsv | grep -q "$STATIC_IP" || echo "Error: Static IP $STATIC_IP does not match any public IP in Azure."
-
-# Check if NGINX Ingress has the required 'nginx' ingressClassName
-for NS in "${NAMESPACES[@]}"; do
-  echo "Inspecting Ingress resources in namespace: $NS"
-  INGRESS_CLASSES=$(kubectl get ingress -n "$NS" -o=jsonpath='{range .items[*]}{.metadata.name}{" - ingressClassName: "}{.spec.ingressClassName}{"\n"}{end}')
-  echo "$INGRESS_CLASSES"
-  echo "$INGRESS_CLASSES" | grep -q "nginx" || echo "Warning: No ingressClassName set to 'nginx' in namespace $NS."
-done
-
-# Verify application service availability on port 3000 in specific namespaces
-echo "Checking if application services are available on port 3000 in the myapp namespace..."
-kubectl get svc -n myapp | grep ':3000' && echo "Service on port 3000 found in namespace myapp." || echo "No service found on port 3000 in namespace myapp."
-
-# Check if port 80 is open on the NGINX Ingress Controller
-echo "Checking if port 80 is open on NGINX Ingress Controller in namespace myapp..."
-INGRESS_POD=$(kubectl get pods -n myapp -l app.kubernetes.io/name=ingress-nginx -o jsonpath="{.items[0].metadata.name}" 2>/dev/null || echo "")
-if [[ -n "$INGRESS_POD" ]]; then
-  kubectl exec -n myapp "$INGRESS_POD" -- netstat -an | grep -q ':80' && echo "Port 80 is open on $INGRESS_POD." || echo "Error: Port 80 is not open on $INGRESS_POD in namespace myapp."
-fi
-
-# Validate NSG rules for port 80 in MC and Main Resource Groups
-echo "Validating NSG rules for port 80..."
-NSG_NAME="jenkins-nsg"  # Replace with your NSG name
-
-# Check NSG rules in both resource groups
-for RG in "$MC_RESOURCE_GROUP" "$MAIN_RESOURCE_GROUP"; do
-  echo "Checking NSG rules in resource group: $RG"
-  NSG_RULE=$(az network nsg rule list --nsg-name "$NSG_NAME" --resource-group "$RG" --query "[?destinationPortRange=='80' && access=='Allow'].{Name:name}" -o tsv || echo "")
-  if [[ -n "$NSG_RULE" ]]; then
-    echo "NSG rule allowing port 80 found in $RG: $NSG_RULE"
-  else
-    echo "Warning: No NSG rule found allowing inbound traffic on port 80 in $RG."
+# Detect the namespace with an application service (skipping system namespaces)
+echo "Searching for application services across namespaces..."
+APP_NAMESPACE=""
+for NS in $NAMESPACES; do
+  if [[ "$NS" != "default" && "$NS" != kube-* ]]; then
+    SERVICE_OUTPUT=$(kubectl get svc -n "$NS" 2>&1)
+    if [[ ! "$SERVICE_OUTPUT" =~ "No resources found" ]] && echo "$SERVICE_OUTPUT" | grep -q -E "LoadBalancer|ClusterIP"; then
+      APP_NAMESPACE="$NS"
+      echo "Application service found in namespace: $APP_NAMESPACE"
+      break
+    fi
   fi
 done
 
-# Check endpoints and network policies in each namespace
-echo "Checking endpoints and network policies in each namespace..."
-for NS in "${NAMESPACES[@]}"; do
-  kubectl get endpoints -n "$NS" || echo "No endpoints found in namespace $NS."
-  kubectl get networkpolicies -n "$NS" || echo "No network policies found in namespace $NS."
-done
-
-# Simulate traffic to verify application reachability via NGINX Ingress
-echo "Testing traffic flow to application on port 3000 via NGINX Ingress..."
-if [[ -n "$LB_IP" ]]; then
-  curl -I "http://$LB_IP" || echo "Error: Unable to reach the application via NGINX Ingress in namespace myapp."
+# Fallback to 'default' if no other namespace has services
+if [[ -z "$APP_NAMESPACE" ]]; then
+  if kubectl get svc -n "default" | grep -q -E "LoadBalancer|ClusterIP"; then
+    APP_NAMESPACE="default"
+    echo "No application-specific namespaces found; using default namespace."
+  else
+    echo "Error: No application services found in any namespace."
+    exit 1
+  fi
 fi
 
-echo "AKS and NGINX Ingress troubleshooting completed."
+# Identify application service details (assumes the app service has a ClusterIP or LoadBalancer type)
+APP_SERVICE_NAME=$(kubectl get svc -n "$APP_NAMESPACE" -o jsonpath="{.items[0].metadata.name}")
+APP_SERVICE_PORT=$(kubectl get svc "$APP_SERVICE_NAME" -n "$APP_NAMESPACE" -o jsonpath="{.spec.ports[0].port}")
+
+# Check if there is at least one pod in the application namespace
+PODS_AVAILABLE=$(kubectl get pods -n "$APP_NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
+if [[ -z "$PODS_AVAILABLE" ]]; then
+  echo "Error: No pods found in the namespace $APP_NAMESPACE. Skipping internal connectivity test."
+else
+  # Choose the first available pod with curl for testing internal connectivity
+  for TEST_POD in $PODS_AVAILABLE; do
+    if kubectl exec -n "$APP_NAMESPACE" "$TEST_POD" -- which curl &>/dev/null; then
+      echo "Testing internal connectivity to the application on ClusterIP ($APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT)..."
+      kubectl exec -n "$APP_NAMESPACE" "$TEST_POD" -- curl -s -o /dev/null -w "%{http_code}" "http://$APP_SERVICE_NAME.$APP_NAMESPACE.svc.cluster.local:$APP_SERVICE_PORT" || echo "Error: Internal connectivity to the application failed."
+      break
+    fi
+  done
+fi
+
+# Check if service has a LoadBalancer IP
+APP_LB_IP=$(kubectl get svc "$APP_SERVICE_NAME" -n "$APP_NAMESPACE" -o jsonpath="{.status.loadBalancer.ingress[0].ip}" 2>/dev/null || echo "")
+
+if [[ -n "$APP_LB_IP" ]]; then
+  echo "External LoadBalancer IP detected: $APP_LB_IP"
+
+  # Test external connectivity to LoadBalancer IP
+  echo "Testing external connectivity to LoadBalancer IP ($APP_LB_IP)..."
+  curl -I "http://$APP_LB_IP:$APP_SERVICE_PORT" || echo "Error: External connectivity to LoadBalancer IP failed."
+
+  # Verify DNS if FQDN is set for the application
+  APP_FQDN=$(kubectl get ingress -n "$APP_NAMESPACE" -o jsonpath="{.items[0].spec.rules[0].host}" 2>/dev/null || echo "")
+  if [[ -n "$APP_FQDN" ]]; then
+    echo "Application FQDN detected: $APP_FQDN"
+    echo "Testing external connectivity to FQDN ($APP_FQDN)..."
+    curl -I "http://$APP_FQDN" || echo "Error: External connectivity to FQDN failed."
+  else
+    echo "No FQDN found in Ingress configuration for the application."
+  fi
+else
+  echo "No LoadBalancer IP assigned to the application service ($APP_SERVICE_NAME) in namespace $APP_NAMESPACE."
+fi
+
+echo "AKS application availability debugging completed."
