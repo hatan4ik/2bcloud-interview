@@ -1,8 +1,9 @@
 variable "subnets" {
   type = map(object({
-    address_prefix = string
+    address_prefix    = string
+    service_endpoints = optional(list(string), [])
   }))
-  description = "A map of subnet names to their address prefixes."
+  description = "A map of subnet names to their address prefixes and optional service endpoints."
 }
 
 variable "resource_group_name" {
