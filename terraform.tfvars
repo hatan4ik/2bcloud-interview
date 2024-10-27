@@ -16,17 +16,17 @@ subnets = {
   aks = {
     name           = "aks-subnet"
     address_prefix = "10.0.1.0/24"
-    service_endpoints = ["Microsoft.Storage"]
+    service_endpoints = ["Microsoft.Storage", "Microsoft.KeyVault", "Microsoft.ContainerRegistry"]
   },
   jenkins = {
     name           = "jenkins-subnet"
     address_prefix = "10.0.2.0/24"
-    service_endpoints = ["Microsoft.Storage"]
+    service_endpoints = ["Microsoft.Storage", "Microsoft.KeyVault"]
   },
   acr = {
     name           = "acr-subnet"
     address_prefix = "10.0.3.0/24"
-    service_endpoints = ["Microsoft.Storage"]
+    service_endpoints = ["Microsoft.Storage", "Microsoft.KeyVault"]
   }
   # Add more subnets as needed
 }
@@ -46,9 +46,14 @@ nsgs = {
         source_address_prefix      = "*"
         destination_address_prefix = "*"
       },
-      acr-nsg = {
-        name                       = "allow-acr-traffic"
-        priority                   = 200
+      ]
+    },
+  acr-nsg = {
+    name = "acr-nsg"
+    rules = [
+      {
+        name                       = "allow-ac-traffic"
+        priority                   = 100
         direction                  = "Inbound"
         access                     = "Allow"
         protocol                   = "Tcp"
@@ -56,10 +61,15 @@ nsgs = {
         destination_port_range     = "443"
         source_address_prefix      = "*"
         destination_address_prefix = "*"
-      },
-      jenkins-nsg = {
-        name                       = "allow-jenkins-traffic"
-        priority                   = 300
+      }
+    ]
+  },
+  jenkins-nsg = {
+    name = "jenkins-nsg"
+    rules = [
+      {
+        name                       = "allow-http-traffic"
+        priority                   = 100
         direction                  = "Inbound"
         access                     = "Allow"
         protocol                   = "Tcp"
@@ -68,8 +78,6 @@ nsgs = {
         source_address_prefix      = "*"
         destination_address_prefix = "*"
       }
-      # Add more rules as needed
     ]
   }
-  # Add more NSGs as needed
 }
