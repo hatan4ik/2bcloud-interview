@@ -3,7 +3,7 @@ resource_prefix    = "myapp"
 
 vnet_address_space = "10.0.0.0/16"
 
-kubernetes_version = "1.3.0"
+kubernetes_version = "1.32.0"
 node_count         = 1
 vm_size            = "Standard_D2_v2"
 
