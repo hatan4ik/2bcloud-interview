@@ -53,7 +53,7 @@ nsgs = {
     rules = [
       {
         name                       = "allow-ac-traffic"
-        priority                   = 100
+        priority                   = 101
         direction                  = "Inbound"
         access                     = "Allow"
         protocol                   = "Tcp"
@@ -69,7 +69,7 @@ nsgs = {
     rules = [
       {
         name                       = "allow-http-traffic"
-        priority                   = 100
+        priority                   = 103
         direction                  = "Inbound"
         access                     = "Allow"
         protocol                   = "Tcp"
