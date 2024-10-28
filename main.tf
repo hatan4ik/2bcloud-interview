@@ -451,7 +451,11 @@ resource "null_resource" "build_and_push_image" {
 
 # }
 
-
+resource "kubernetes_namespace" "myapp_namespace" {
+  metadata {
+    name = "myapp"
+  }
+}
 # --- 11. Kubernetes Secret for ACR Pull ---
 resource "kubernetes_secret" "acr_pull_secret" {
   count = length(var.target_namespaces) > 0 ? length(var.target_namespaces) : 1
@@ -475,8 +479,9 @@ resource "kubernetes_secret" "acr_pull_secret" {
 
   depends_on = [
     azurerm_kubernetes_cluster.aks,
-    azuread_service_principal_password.acr_sp_password
-  ]
+    azuread_service_principal_password.acr_sp_password,
+    kubernetes_namespace.myapp_namespace 
+    ]
 }
 
 # --- 12. MyApp Deployment and Service ---
