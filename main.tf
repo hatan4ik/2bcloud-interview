@@ -614,7 +614,7 @@ resource "null_resource" "update_kubeconfig" {
 
 module "cert_manager" {
   source    = "./modules/helm_release"
-  name      = "cert-manager"
+  name = "cert-manager-${var.resource_prefix}"
   chart     = "cert-manager"
   repository = "https://charts.jetstack.io"
   #chart_version   = "v1.16.1"
@@ -627,16 +627,15 @@ module "cert_manager" {
 }
 
 module "externaldns" {
-  source    = "./modules/helm_release"
-  name      = "externaldns"
-  chart     = "external-dns"
-  repository = "https://kubernetes-sigs.github.io/external-dns"
-  #chart_version   = "v0.15.0"
-  namespace = "externaldns"
-  set_values = [
+  source      = "./modules/helm_release"
+  name        = "externaldns"
+  chart       = "external-dns"
+  repository  = "https://kubernetes-sigs.github.io/external-dns"
+  namespace   = "externaldns"
+  set_values  = [
     { name = "provider", value = "azure" },
-    { name = "azure.resourceGroup", value = "data.azurerm_resource_group.main.name" },
-    { name = "domainFilters", value = "yourdomain.com" },
+    { name = "azure.resourceGroup", value = "${data.azurerm_resource_group.main.name}" },
+    { name = "domainFilters[0]", value = "yourdomain.com" },
     { name = "serviceAccount.create", value = "true" },
     { name = "serviceAccount.name", value = "externaldns" },
     { name = "azure.useManagedIdentity", value = "true" }
@@ -646,7 +645,7 @@ module "externaldns" {
 module "redis_sentinel" {
   source      = "./modules/helm_release"
   name        = "redis"
-  chart       = "redis-sentinel"
+  chart       = "redis"
   repository  = "https://charts.bitnami.com/bitnami"
   #chart_version     = "17.10.1"
   namespace   = "redis"
