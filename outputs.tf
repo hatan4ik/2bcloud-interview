@@ -39,21 +39,14 @@ output "aks_cluster_kube_config" {
   sensitive = true
 }
 
-###########
-output "nsg_association_debug" {
-  value = module.subnets.nsg_association_debug
-}
+######################
+# output "nsg_associations" {
+#   value = module.subnets.nsg_associations
+#   description = "Map of NSG associations by subnet name"
+# }
 
-output "route_table_association_debug" {
-  value = module.subnets.route_table_association_debug
-}
-output "nsg_associations" {
-  value = module.subnets.nsg_associations
-  description = "Map of NSG associations by subnet name"
-}
-
-output "route_table_associations" {
-  value = module.subnets.route_table_associations
-  description = "Map of Route Table associations by subnet name"
-}
+# output "route_table_associations" {
+#   value = module.subnets.route_table_associations
+#   description = "Map of Route Table associations by subnet name"
+# }
 
