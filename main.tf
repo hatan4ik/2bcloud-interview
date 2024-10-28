@@ -1,5 +1,8 @@
 # --- 1. Local Variables and Data Sources ---
 locals {
+  route_table_names = {
+    for subnet_name, _ in var.subnets : subnet_name => "${subnet_name}-route-table"
+  }
   release_name_prefix = "a${random_string.random.result}"
   dockerfile_hash  = filemd5("${path.module}/Dockerfile")
   source_code_hash = md5(join("", [for f in fileset("${path.module}/src", "**") : filemd5("${path.module}/src/${f}")]))
@@ -60,9 +63,19 @@ module "network_security_groups" {
     vnet_name           = azurerm_virtual_network.vnet.name
     nsg_ids             = module.network_security_groups.security_group_ids
     location            = data.azurerm_resource_group.main.location
-    route_table_ids     = var.route_table_ids
+    route_table_ids     = { for k, rt in azurerm_route_table.route_table : k => rt.id }  # Pass the actual IDs
+    #route_table_ids     =  module.subnets.route_table_ids
 
   }
+
+  # Route Tables Creation (Using names dynamically)
+resource "azurerm_route_table" "route_table" {
+  for_each            = local.route_table_names
+  name                = each.value
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
+}
+
 
 # --- 3. Azure Key Vault ---
 resource "azurerm_key_vault" "kv" {

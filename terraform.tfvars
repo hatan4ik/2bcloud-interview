@@ -81,3 +81,9 @@ nsgs = {
     ]
   }
 }
+
+route_table_ids = {
+  "aks"     = "route-table-id-for-aks"
+  "jenkins" = "route-table-id-for-jenkins"
+  "acr"     = "route-table-id-for-acr"
+}

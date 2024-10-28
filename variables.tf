@@ -83,3 +83,9 @@ variable "route_table_ids" {
   type        = map(string)
   default     = {}
 }
+
+variable "nsg_ids" {
+  description = "Map of subnet names to NSG IDs for association"
+  type        = map(string)
+  default     = {}  # Optional: default to an empty map if not all subnets have NSGs
+}
