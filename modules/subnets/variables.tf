@@ -1,33 +1,35 @@
 variable "subnets" {
+  description = "Map of subnets with their address prefixes and optional service endpoints"
   type = map(object({
     address_prefix    = string
     service_endpoints = optional(list(string), [])
   }))
-  description = "A map of subnet names to their address prefixes and optional service endpoints."
-}
-
-variable "resource_group_name" {
-  type        = string
-  description = "The name of the resource group containing the VNet."
-}
-
-variable "vnet_name" {
-  type        = string
-  description = "The name of the Virtual Network."
 }
 
 variable "nsg_ids" {
+  description = "Map of subnet names to NSG IDs for association"
   type        = map(string)
-  description = "A map of subnet names to NSG IDs to associate with each subnet."
   default     = {}
 }
 
-variable "route_table_id" {
-  type        = string
-  description = "The ID of the route table to associate with each subnet."
-  default     = null
+variable "route_table_ids" {
+  description = "Map of subnet names to Route Table IDs for association"
+  type        = map(string)
+  default     = {}
 }
+
+variable "resource_group_name" {
+  description = "Name of the resource group for the subnets"
+  type        = string
+}
+
+variable "vnet_name" {
+  description = "Name of the virtual network"
+  type        = string
+}
+
 variable "location" {
+  description = "Location for the subnets"
   type        = string
-  description = "Location of the resource group for subnets."
 }
+

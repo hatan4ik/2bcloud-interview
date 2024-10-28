@@ -6,7 +6,7 @@ resource "azurerm_network_security_group" "nsg" {
   resource_group_name = var.resource_group_name
 
   dynamic "security_rule" {
-    for_each = each.value.rules
+    for_each = try(each.value.rules, [])
     content {
       name                       = security_rule.value.name
       priority                   = security_rule.value.priority
@@ -21,7 +21,7 @@ resource "azurerm_network_security_group" "nsg" {
   }
 }
 
-# Default NSG rule to allow VNet-local traffic
+# Default NSG rule to allow VNet-local traffic if enabled
 resource "azurerm_network_security_rule" "vnet_local_allow" {
   for_each                    = var.nsgs
   name                        = "AllowVNetInBound-${each.key}"
@@ -33,6 +33,6 @@ resource "azurerm_network_security_rule" "vnet_local_allow" {
   destination_port_range      = "*"
   source_address_prefix       = "VirtualNetwork"
   destination_address_prefix  = "VirtualNetwork"
-  network_security_group_name = each.key
+  network_security_group_name = azurerm_network_security_group.nsg[each.key].name
   resource_group_name         = var.resource_group_name
 }

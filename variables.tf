@@ -78,3 +78,8 @@ variable "nsgs" {
     }))
   }))
 }
+variable "route_table_ids" {
+  description = "Map of subnet names to Route Table IDs for association"
+  type        = map(string)
+  default     = {}
+}

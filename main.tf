@@ -60,6 +60,8 @@ module "network_security_groups" {
     vnet_name           = azurerm_virtual_network.vnet.name
     nsg_ids             = module.network_security_groups.security_group_ids
     location            = data.azurerm_resource_group.main.location
+    route_table_ids     = var.route_table_ids
+
   }
 
 # --- 3. Azure Key Vault ---
