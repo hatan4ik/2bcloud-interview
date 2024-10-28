@@ -1,4 +1,3 @@
-# Variables for Helm Release Module
 variable "name" {
   type        = string
   description = "The name of the Helm release."
@@ -6,22 +5,23 @@ variable "name" {
 
 variable "chart" {
   type        = string
-  description = "The Helm chart to deploy."
+  description = "The name of the Helm chart to deploy."
 }
 
 variable "repository" {
   type        = string
-  description = "The repository URL for the Helm chart."
+  description = "The Helm repository URL for the chart."
 }
 
-variable "version" {
+variable "chart_version" {
   type        = string
-  description = "The version of the Helm chart."
+  description = "The chart version to deploy."
+  default     = null
 }
 
 variable "namespace" {
   type        = string
-  description = "The Kubernetes namespace in which to deploy the release."
+  description = "The Kubernetes namespace in which to install the chart."
 }
 
 variable "set_values" {
@@ -29,6 +29,6 @@ variable "set_values" {
     name  = string
     value = string
   }))
+  description = "List of values to set for the Helm chart."
   default     = []
-  description = "List of name/value pairs to set in the Helm chart."
 }
