@@ -32,7 +32,7 @@ subnets = {
 }
 
 nsgs = {
-  aks-nsg = {
+  aks = {
     name = "aks-nsg"
     rules = [
       {
@@ -48,7 +48,7 @@ nsgs = {
       },
       ]
     },
-  acr-nsg = {
+  acr = {
     name = "acr-nsg"
     rules = [
       {
@@ -64,7 +64,7 @@ nsgs = {
       }
     ]
   },
-  jenkins-nsg = {
+  jenkins = {
     name = "jenkins-nsg"
     rules = [
       {
