@@ -27,8 +27,7 @@ variable "route_table_id" {
   description = "The ID of the route table to associate with each subnet."
   default     = null
 }
-
 variable "location" {
   type        = string
-  description = "The location for the resources in this module."
+  description = "Location of the resource group for subnets."
 }

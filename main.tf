@@ -58,7 +58,7 @@ module "network_security_groups" {
     subnets             = var.subnets
     resource_group_name = data.azurerm_resource_group.main.name
     vnet_name           = azurerm_virtual_network.vnet.name
-    nsg_ids             = module.network_security_groups.nsg_ids
+    nsg_ids             = module.network_security_groups.security_group_ids
     location            = data.azurerm_resource_group.main.location
   }
 
@@ -290,7 +290,9 @@ set {
 
 
 
-  depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip]
+  depends_on = [azurerm_kubernetes_cluster.aks, azurerm_public_ip.ingress_public_ip,
+      kubernetes_secret.acr_pull_secret
+  ]
 }
 ###################
 
