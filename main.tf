@@ -612,48 +612,48 @@ resource "null_resource" "update_kubeconfig" {
 #   depends_on = [kubernetes_ingress_v1.myapp_ingress, helm_release.ingress_nginx]
 # }
 
-module "cert_manager" {
-  source    = "./modules/helm_release"
-  name = "cert-manager-${var.resource_prefix}"
-  chart     = "cert-manager"
-  repository = "https://charts.jetstack.io"
-  #chart_version   = "v1.16.1"
-  namespace = "cert-manager"
-  set_values = [
-    { name = "installCRDs", value = "true" },
-    { name = "serviceAccount.create", value = "true" },
-    { name = "serviceAccount.name", value = "cert-manager" },
-  ]
-}
+# module "cert_manager" {
+#   source    = "./modules/helm_release"
+#   name = "cert-manager-${var.resource_prefix}"
+#   chart     = "cert-manager"
+#   repository = "https://charts.jetstack.io"
+#   #chart_version   = "v1.16.1"
+#   namespace = "cert-manager"
+#   set_values = [
+#     { name = "installCRDs", value = "true" },
+#     { name = "serviceAccount.create", value = "true" },
+#     { name = "serviceAccount.name", value = "cert-manager" },
+#   ]
+# }
 
-module "externaldns" {
-  source      = "./modules/helm_release"
-  name        = "externaldns"
-  chart       = "external-dns"
-  repository  = "https://kubernetes-sigs.github.io/external-dns"
-  namespace   = "externaldns"
-  set_values  = [
-    { name = "provider", value = "azure" },
-    { name = "azure.resourceGroup", value = "${data.azurerm_resource_group.main.name}" },
-    { name = "domainFilters[0]", value = "yourdomain.com" },
-    { name = "serviceAccount.create", value = "true" },
-    { name = "serviceAccount.name", value = "externaldns" },
-    { name = "azure.useManagedIdentity", value = "true" }
-  ]
-}
+# module "externaldns" {
+#   source      = "./modules/helm_release"
+#   name        = "externaldns"
+#   chart       = "external-dns"
+#   repository  = "https://kubernetes-sigs.github.io/external-dns"
+#   namespace   = "externaldns"
+#   set_values  = [
+#     { name = "provider", value = "azure" },
+#     { name = "azure.resourceGroup", value = "${data.azurerm_resource_group.main.name}" },
+#     { name = "domainFilters[0]", value = "yourdomain.com" },
+#     { name = "serviceAccount.create", value = "true" },
+#     { name = "serviceAccount.name", value = "externaldns" },
+#     { name = "azure.useManagedIdentity", value = "true" }
+#   ]
+# }
 
-module "redis_sentinel" {
-  source      = "./modules/helm_release"
-  name        = "redis"
-  chart       = "redis"
-  repository  = "https://charts.bitnami.com/bitnami"
-  #chart_version     = "17.10.1"
-  namespace   = "redis"
-  set_values  = [
-    { name = "usePassword", value = "true" },
-    { name = "sentinel.enabled", value = "true" },
-    { name = "auth.password", value = "your-redis-password" },
-    { name = "replica.replicaCount", value = "3" },
-    { name = "sentinel.replicaCount", value = "3" }
-  ]
-}
+# module "redis_sentinel" {
+#   source      = "./modules/helm_release"
+#   name        = "redis"
+#   chart       = "redis"
+#   repository  = "https://charts.bitnami.com/bitnami"
+#   #chart_version     = "17.10.1"
+#   namespace   = "redis"
+#   set_values  = [
+#     { name = "usePassword", value = "true" },
+#     { name = "sentinel.enabled", value = "true" },
+#     { name = "auth.password", value = "your-redis-password" },
+#     { name = "replica.replicaCount", value = "3" },
+#     { name = "sentinel.replicaCount", value = "3" }
+#   ]
+# }
