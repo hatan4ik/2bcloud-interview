@@ -680,7 +680,7 @@ resource "kubernetes_manifest" "letsencrypt_staging_clusterissuer" {
     }
   }
 
-  depends_on = [helm_release.cert_manager]
+  depends_on = [module.cert_manager]
 }
 
 
