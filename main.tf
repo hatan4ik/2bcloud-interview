@@ -638,6 +638,7 @@ module "cert_manager" {
   namespace    = "cert-manager"
   create_namespace = true
   timeout = 600
+  atomic           = true
 
 
   set_values = [
@@ -651,6 +652,37 @@ module "cert_manager" {
     azurerm_kubernetes_cluster.aks, # Make sure AKS is ready
   ]
 }
+
+resource "kubernetes_manifest" "letsencrypt_staging_clusterissuer" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "ClusterIssuer"
+    metadata = {
+      name = "letsencrypt-staging"
+    }
+    spec = {
+      acme = {
+        server = "https://acme-staging-v02.api.letsencrypt.org/directory"
+        email  = "email@example.com"
+        privateKeySecretRef = {
+          name = "letsencrypt-staging-key"
+        }
+        solvers = [
+          {
+            http01 = {
+              ingress = {
+                class = "nginx"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+
+  depends_on = [helm_release.cert_manager]
+}
+
 
 
 

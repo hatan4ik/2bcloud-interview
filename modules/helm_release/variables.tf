@@ -42,3 +42,9 @@ variable "timeout" {
   type        = number
   default     = 300
 }
+
+variable "atomic" {
+  description = "If true, installation process purges chart on failure. The wait flag will be set automatically if atomic is used."
+  type        = bool
+  default     = false
+}
