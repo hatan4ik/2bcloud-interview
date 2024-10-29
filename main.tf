@@ -629,30 +629,33 @@ resource "null_resource" "update_kubeconfig" {
 
 
 
+# --- Existing Local Variables, Data Sources, and AKS Configuration ---
+# (Assume all previous configurations remain as they are)
+
+# --- Helm Release for Cert-Manager with Timeout and CA Injection ---
 module "cert_manager" {
   source      = "./modules/helm_release"
   name        = "cert-manager-${var.resource_prefix}"
   chart       = "cert-manager"
   repository  = "https://charts.jetstack.io"
-  chart_version = "v1.16.1" # Specify a compatible version
+  chart_version = "v1.16.1"
   namespace    = "cert-manager"
   create_namespace = true
-  timeout = 600
-  atomic           = true
-
+  timeout = 600  # Extended timeout to handle CRD creation time
+  atomic  = true
 
   set_values = [
     { name = "crds.enabled", value = "true" },
     { name = "serviceAccount.create", value = "true" },
     { name = "serviceAccount.name", value = "cert-manager" },
-    # Add other necessary configuration values here
   ]
 
   depends_on = [
-    azurerm_kubernetes_cluster.aks, # Make sure AKS is ready
+    azurerm_kubernetes_cluster.aks,
   ]
 }
 
+# --- ClusterIssuer for LetsEncrypt Staging ---
 resource "kubernetes_manifest" "letsencrypt_staging_clusterissuer" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -679,10 +682,31 @@ resource "kubernetes_manifest" "letsencrypt_staging_clusterissuer" {
       }
     }
   }
-
   depends_on = [module.cert_manager]
 }
 
+# --- Certificate for Webhook CA (Resolves CA injection issue) ---
+resource "kubernetes_manifest" "cert_manager_webhook_certificate" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "cert-manager-webhook-ca"
+      namespace = "cert-manager"
+    }
+    spec = {
+      secretName = "cert-manager-webhook-ca"
+      isCA       = true
+      issuerRef = {
+        name = kubernetes_manifest.letsencrypt_staging_clusterissuer.metadata[0].name
+        kind = "ClusterIssuer"
+      }
+      commonName = "cert-manager-webhook-ca"
+      dnsNames   = ["cert-manager-webhook.cert-manager.svc"]
+    }
+  }
+  depends_on = [module.cert_manager, kubernetes_manifest.letsencrypt_staging_clusterissuer]
+}
 
 
 
