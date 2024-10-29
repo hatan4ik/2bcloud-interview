@@ -628,26 +628,28 @@ resource "null_resource" "update_kubeconfig" {
 # }
 
 
-
-# --- Existing Local Variables, Data Sources, and AKS Configuration ---
-# (Assume all previous configurations remain as they are)
-
 # --- Helm Release for Cert-Manager with Timeout and CA Injection ---
+
+# --- Adjusted Cert-Manager Module ---
 module "cert_manager" {
-  source      = "./modules/helm_release"
-  name        = "cert-manager-${var.resource_prefix}"
-  chart       = "cert-manager"
-  repository  = "https://charts.jetstack.io"
-  chart_version = "v1.16.1"
-  namespace    = "cert-manager"
+  source          = "./modules/helm_release"
+  name            = "cert-manager-${var.resource_prefix}"
+  chart           = "cert-manager"
+  repository      = "https://charts.jetstack.io"
+  chart_version   = "v1.16.1"
+  namespace       = "cert-manager"
   create_namespace = true
-  timeout = 600  # Extended timeout to handle CRD creation time
-  atomic  = true
+  timeout         = 1200  # Extended timeout to handle potential CRD delays
+  atomic          = true
 
   set_values = [
     { name = "crds.enabled", value = "true" },
     { name = "serviceAccount.create", value = "true" },
     { name = "serviceAccount.name", value = "cert-manager" },
+    # Set a higher initial delay for webhook readiness probe
+    { name = "webhook.readinessProbe.initialDelaySeconds", value = "30" },
+    # Enable CA certificate management for webhook
+    { name = "webhook.ca.secret.enabled", value = "true" }
   ]
 
   depends_on = [
@@ -698,14 +700,17 @@ resource "kubernetes_manifest" "cert_manager_webhook_certificate" {
       secretName = "cert-manager-webhook-ca"
       isCA       = true
       issuerRef = {
-        name = kubernetes_manifest.letsencrypt_staging_clusterissuer.metadata[0].name
+        name = kubernetes_manifest.letsencrypt_staging_clusterissuer.manifest.metadata.name
         kind = "ClusterIssuer"
       }
       commonName = "cert-manager-webhook-ca"
       dnsNames   = ["cert-manager-webhook.cert-manager.svc"]
     }
   }
-  depends_on = [module.cert_manager, kubernetes_manifest.letsencrypt_staging_clusterissuer]
+  depends_on = [
+    module.cert_manager,
+    kubernetes_manifest.letsencrypt_staging_clusterissuer,
+  ]
 }
 
 
