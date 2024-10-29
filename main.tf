@@ -648,8 +648,6 @@ module "cert_manager" {
     { name = "serviceAccount.name", value = "cert-manager" },
     # Set a higher initial delay for webhook readiness probe
     { name = "webhook.readinessProbe.initialDelaySeconds", value = "30" },
-    # Enable CA certificate management for webhook
-    { name = "webhook.ca.secret.enabled", value = "true" }
   ]
 
   depends_on = [
