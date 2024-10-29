@@ -627,19 +627,31 @@ resource "null_resource" "update_kubeconfig" {
 #   depends_on = [kubernetes_ingress_v1.myapp_ingress, helm_release.ingress_nginx]
 # }
 
-# module "cert_manager" {
-#   source    = "./modules/helm_release"
-#   name = "cert-manager-${var.resource_prefix}"
-#   chart     = "cert-manager"
-#   repository = "https://charts.jetstack.io"
-#   #chart_version   = "v1.16.1"
-#   namespace = "cert-manager"
-#   set_values = [
-#     { name = "installCRDs", value = "true" },
-#     { name = "serviceAccount.create", value = "true" },
-#     { name = "serviceAccount.name", value = "cert-manager" },
-#   ]
-# }
+
+
+module "cert_manager" {
+  source      = "./modules/helm_release"
+  name        = "cert-manager-${var.resource_prefix}"
+  chart       = "cert-manager"
+  repository  = "https://charts.jetstack.io"
+  chart_version = "v1.16.1" # Specify a compatible version
+  namespace    = "cert-manager"
+  create_namespace = true
+
+
+  set_values = [
+    { name = "crds.enabled", value = "true" },
+    { name = "serviceAccount.create", value = "true" },
+    { name = "serviceAccount.name", value = "cert-manager" },
+    # Add other necessary configuration values here
+  ]
+
+  depends_on = [
+    azurerm_kubernetes_cluster.aks, # Make sure AKS is ready
+  ]
+}
+
+
 
 # module "externaldns" {
 #   source      = "./modules/helm_release"

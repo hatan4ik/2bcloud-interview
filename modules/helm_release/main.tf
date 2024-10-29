@@ -16,7 +16,7 @@ resource "helm_release" "helm_chart" {
   repository = var.repository
   chart      = var.chart
   version    = var.chart_version
-  namespace  = kubernetes_namespace.helm_namespace.metadata[0].name
+  namespace  = var.namespace
 
   # Dynamic set block for Helm values
   dynamic "set" {

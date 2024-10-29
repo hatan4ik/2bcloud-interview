@@ -32,3 +32,8 @@ variable "set_values" {
   description = "List of values to set for the Helm chart."
   default     = []
 }
+variable "create_namespace" {
+  description = "Create the namespace if it does not yet exist"
+  type        = bool
+  default     = false
+}
