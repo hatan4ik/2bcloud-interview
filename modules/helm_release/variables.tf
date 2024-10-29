@@ -37,3 +37,8 @@ variable "create_namespace" {
   type        = bool
   default     = false
 }
+variable "timeout" {
+  description = "Time in seconds to wait for any individual Kubernetes operation (like Jobs for hooks) (default 300)"
+  type        = number
+  default     = 300
+}

@@ -637,6 +637,7 @@ module "cert_manager" {
   chart_version = "v1.16.1" # Specify a compatible version
   namespace    = "cert-manager"
   create_namespace = true
+  timeout = 600
 
 
   set_values = [
