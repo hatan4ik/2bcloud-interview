@@ -39,3 +39,5 @@ terraform.rc
 .trunk
 replace-project-url.py
 reset-git.sh
+.idea
+.DS_Store
