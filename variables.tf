@@ -89,3 +89,8 @@ variable "nsg_ids" {
   type        = map(string)
   default     = {}  # Optional: default to an empty map if not all subnets have NSGs
 }
+
+variable "subscription_id" {
+  description = "Subscription ID"
+  type        = string
+}

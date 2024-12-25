@@ -1,4 +1,5 @@
-resource_group_name = "Nathanel-Candidate"
+#resource_group_name = "Nathanel-Candidate"
+resource_group_name = "rsg-nathanels-eus1-l-001"
 resource_prefix    = "myapp"
 
 vnet_address_space = "10.0.0.0/16"
@@ -87,3 +88,5 @@ route_table_ids = {
   "jenkins" = "route-table-id-for-jenkins"
   "acr"     = "route-table-id-for-acr"
 }
+
+subscription_id = "ab7ca87d-fb6a-4f43-9092-8a48974ac4af"
