@@ -21,20 +21,20 @@ locals {
 data "azurerm_client_config" "current" {}
 
 
-### Use if RSG already exists
-# data "azurerm_resource_group" "main" {
-#   name = var.resource_group_name
-# }
-
-###Otherwise use create statement for RSG
-resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
-  location = var.location
-}
-# Data block to fetch information from the resource group
+## Use if RSG already exists
 data "azurerm_resource_group" "main" {
-  name = azurerm_resource_group.main.name
+  name = var.resource_group_name
 }
+
+# ###Otherwise use create statement for RSG
+# resource "azurerm_resource_group" "main" {
+#   name     = var.resource_group_name
+#   location = var.location
+# }
+# # Data block to fetch information from the resource group
+# data "azurerm_resource_group" "main" {
+#   name = azurerm_resource_group.main.name
+# }
 
 data "local_file" "image_tag" {
   filename   = "${path.module}/image_tag.txt"

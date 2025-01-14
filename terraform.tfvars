@@ -1,4 +1,3 @@
-#resource_group_name = "Nathanel-Candidate"
 resource_group_name = "rsg-nathanels-eus1-l-001"
 location            = "eastus"
 resource_prefix    = "myapp"
@@ -91,7 +90,7 @@ route_table_ids = {
 }
 
 #### SES LAB Subscription
-subscription_id = "ab7ca87d-fb6a-4f43-9092-8a48974ac4af"
+subscription_id = "5d982ebd-0020-42c8-8137-c73e378bf0ee"
 tenant_id = "46413989-42dc-4b1e-b8aa-e0a855d29515"
 
 ## Private Nathanel Subscription
