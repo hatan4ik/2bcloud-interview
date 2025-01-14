@@ -94,3 +94,13 @@ variable "subscription_id" {
   description = "Subscription ID"
   type        = string
 }
+
+variable "tenant_id" {
+  description = "Tenant ID"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region to deploy resources"
+  type        = string
+}

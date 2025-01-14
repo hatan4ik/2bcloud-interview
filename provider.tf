@@ -38,9 +38,8 @@ provider "azurerm" {
       recover_soft_deleted_key_vaults = true
     }
   }
-  #subscription_id = "1fd5b2b6-8e57-4cfe-95f8-176a7a8d1abf"
-  #subscription_id = "ab7ca87d-fb6a-4f43-9092-8a48974ac4af"
   subscription_id = var.subscription_id
+  tenant_id = var.tenant_id
   use_cli         = true
 }
 
@@ -48,20 +47,28 @@ provider "azurerm" {
 provider "azuread" {}
 
 # Kubernetes Provider Configuration
+# provider "kubernetes" {
+#   host                   = azurerm_kubernetes_cluster.aks.kube_config[0].host
+#   client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_certificate)
+#   client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_key)
+#   cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].cluster_ca_certificate)
+# }
+
 provider "kubernetes" {
-  host                   = azurerm_kubernetes_cluster.aks.kube_config[0].host
-  client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_certificate)
-  client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_key)
-  cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].cluster_ca_certificate)
+  host                   = azurerm_kubernetes_cluster.aks.kube_admin_config[0].host
+  client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].client_certificate)
+  client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].client_key)
+  cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].cluster_ca_certificate)
 }
+
 
 # Helm Provider Configuration
 provider "helm" {
   kubernetes {
     host                   = azurerm_kubernetes_cluster.aks.kube_config[0].host
-    client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_certificate)
-    client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].client_key)
-    cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_config[0].cluster_ca_certificate)
+    client_certificate     = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].client_certificate)
+    client_key             = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].client_key)
+    cluster_ca_certificate = base64decode(azurerm_kubernetes_cluster.aks.kube_admin_config[0].cluster_ca_certificate)
   }
 }
 

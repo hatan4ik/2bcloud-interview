@@ -1,5 +1,6 @@
 #resource_group_name = "Nathanel-Candidate"
 resource_group_name = "rsg-nathanels-eus1-l-001"
+location            = "eastus"
 resource_prefix    = "myapp"
 
 vnet_address_space = "10.0.0.0/16"
@@ -89,5 +90,10 @@ route_table_ids = {
   "acr"     = "route-table-id-for-acr"
 }
 
-#subscription_id = "ab7ca87d-fb6a-4f43-9092-8a48974ac4af"
-subscription_id = "5d982ebd-0020-42c8-8137-c73e378bf0ee"
+#### SES LAB Subscription
+subscription_id = "ab7ca87d-fb6a-4f43-9092-8a48974ac4af"
+tenant_id = "46413989-42dc-4b1e-b8aa-e0a855d29515"
+
+## Private Nathanel Subscription
+#subscription_id = "1fd5b2b6-8e57-4cfe-95f8-176a7a8d1abf"
+#tenant_id = "9fe4b66a-8e9f-4e8c-a935-b81c51c70467"

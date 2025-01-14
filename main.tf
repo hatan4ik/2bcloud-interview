@@ -20,8 +20,20 @@ locals {
 
 data "azurerm_client_config" "current" {}
 
+
+### Use if RSG already exists
+# data "azurerm_resource_group" "main" {
+#   name = var.resource_group_name
+# }
+
+###Otherwise use create statement for RSG
+resource "azurerm_resource_group" "main" {
+  name     = var.resource_group_name
+  location = var.location
+}
+# Data block to fetch information from the resource group
 data "azurerm_resource_group" "main" {
-  name = var.resource_group_name
+  name = azurerm_resource_group.main.name
 }
 
 data "local_file" "image_tag" {
@@ -114,6 +126,11 @@ resource "azurerm_kubernetes_cluster" "aks" {
   kubernetes_version  = var.kubernetes_version
   dns_prefix          = "aks-${random_string.random.result}"
   sku_tier            = "Standard"
+  local_account_disabled = false
+  # azure_active_directory_role_based_access_control {
+  #   azure_rbac_enabled = true
+  #   admin_group_object_ids = ["${data.azurerm_client_config.current.object_id}"]
+  # }
 
   default_node_pool {
     name           = "default"
@@ -466,10 +483,25 @@ resource "null_resource" "build_and_push_image" {
 
 # }
 
+
+# ---. Update Kubeconfig with AKS Credentials ---
+resource "null_resource" "update_kubeconfig" {
+  triggers = {
+    aks_cluster_id = azurerm_kubernetes_cluster.aks.id
+  }
+  provisioner "local-exec" {
+    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin"
+  }
+  depends_on = [azurerm_kubernetes_cluster.aks,
+  azurerm_role_assignment.aks_cluster_admin
+  ]
+}
+
 resource "kubernetes_namespace" "myapp_namespace" {
   metadata {
     name = "myapp"
   }
+  depends_on = [ azurerm_kubernetes_cluster.aks ]
 }
 # --- 11. Kubernetes Secret for ACR Pull ---
 resource "kubernetes_secret" "acr_pull_secret" {
@@ -549,7 +581,12 @@ resource "kubernetes_deployment" "myapp" {
       }
     }
   }
-  depends_on = [azurerm_kubernetes_cluster.aks, helm_release.ingress_nginx, null_resource.build_and_push_image]
+  depends_on = [
+    azurerm_kubernetes_cluster.aks,
+    null_resource.update_kubeconfig,
+    helm_release.ingress_nginx,
+    null_resource.build_and_push_image
+  ]
 }
 
 resource "kubernetes_service" "myapp" {
@@ -601,18 +638,6 @@ resource "kubernetes_ingress_v1" "myapp_ingress" {
     }
   }
   depends_on = [kubernetes_service.myapp, helm_release.ingress_nginx]
-}
-# --- 14. Update Kubeconfig with AKS Credentials ---
-resource "null_resource" "update_kubeconfig" {
-  triggers = {
-    aks_cluster_id = azurerm_kubernetes_cluster.aks.id
-  }
-  provisioner "local-exec" {
-    command = "az aks get-credentials --resource-group ${data.azurerm_resource_group.main.name} --name ${azurerm_kubernetes_cluster.aks.name} --overwrite-existing --admin"
-  }
-  depends_on = [azurerm_kubernetes_cluster.aks,
-  azurerm_role_assignment.aks_cluster_admin
-  ]
 }
 
 # # --- 15. Verification and Testing ---
