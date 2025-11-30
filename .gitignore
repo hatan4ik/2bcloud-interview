@@ -6,3 +6,17 @@
 
 # Log files
 *.log
+
+# Terraform artifacts (state and vars can include secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+
+# Local auth/config files
+config.json
+
+# Security scan outputs
+npm-audit*.json
+*.sarif
