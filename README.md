@@ -65,6 +65,17 @@ If this project is a library, document the public API here.
 *   `someFunction(arg1, arg2)` - Brief description of what this function does.
 *   `anotherFunction(options)` - Description of this function and its parameters.
 
+## Infrastructure (Terraform)
+
+The repo includes Terraform to stand up the Azure landing zone and deploy the app:
+
+- **Providers**: `azurerm`, `azuread`, `kubernetes`, `helm`, and `random` (CLI auth driven).
+- **Networking**: VNet plus subnets, NSGs, and route tables via reusable modules.
+- **Platform services**: Key Vault (stores ACR SP secret), ACR (no admin user), and an AKS cluster with Azure CNI, system identity, and RBAC role assignments for ACR pull and Key Vault secret access.
+- **Ingress**: Static public IP and Helm-managed `ingress-nginx` controller.
+- **App deploy**: Builds/pushes Docker image to ACR, then creates namespace, image pull secret, Deployment/Service/Ingress for `myapp` using the tag in `image_tag.txt`.
+- **State**: Currently local (`terraform.tfstate`); configure a remote backend before team use.
+
 ## Running Tests
 
 To run the test suite for this project, use the following command:
