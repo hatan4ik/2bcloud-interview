@@ -1,0 +1,36 @@
+replicaCount: 1
+
+image:
+  repository: myacrregistry.azurecr.io/myapp
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts: []
+  tls: []
+
+keyVault:
+  enabled: false
+  name: ""
+  secretName: ""
+  tenantID: ""
+  userAssignedIdentityID: ""
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  cpuTargetAverageUtilization: 50
+  memoryTargetAverageUtilization: 60
+
+redis:
+  enabled: true

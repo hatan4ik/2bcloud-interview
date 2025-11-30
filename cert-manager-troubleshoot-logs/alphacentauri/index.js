@@ -1,9 +1,6 @@
 const express = require('express');
-const helmet = require('helmet'); // Import helmet
 const app = express();
 const port = 3000;
-
-app.use(helmet()); // Use helmet middleware
 
 app.get('/', (req, res) => {
   res.send('Hello World!');
