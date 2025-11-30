@@ -1,103 +1,54 @@
-# Project Title: 2bcloud-interview
+# 2bcloud interview: AKS + Node.js + Key Vault
 
-> A sample Node.js web application for the 2bcloud interview process, demonstrating integration with Azure Key Vault.
+This repository **does** spin up Kubernetes and deploy an application. Terraform stands up Azure networking, Key Vault, ACR, and an AKS cluster, builds the provided Node.js app into a container image, pushes it to ACR, installs NGINX ingress via Helm, and deploys the app with a Service and Ingress.
 
-[![NPM Version][npm-image]][npm-url] [![Build Status][build-image]][build-url]
+## What this deploys
+- Azure Virtual Network plus subnets, NSGs, and route tables (see `terraform.tfvars`).
+- Key Vault and an ACR-specific Azure AD service principal; its credentials are stored as secret `acr-sp-secret` in the vault.
+- ACR (admin disabled) and AKS (Azure CNI, system-assigned identity, RBAC). Role assignments allow AKS to pull from ACR and read Key Vault secrets.
+- Static public IP and Helm-installed `ingress-nginx` in namespace `myapp` (currently annotated as an internal load balancer).
+- Docker image built with `az acr build` from this repo (tag read from `image_tag.txt`), pushed to ACR, and deployed as a Deployment/Service/Ingress in namespace `myapp`.
 
-This project is a simple web server built with Express.js. It is designed as a technical demonstration to showcase the ability to securely manage and retrieve application secrets using Azure Key Vault, a common requirement in modern cloud-native applications. The server starts up and exposes a basic "Hello World" endpoint.
+## Application
+- `index.js` is an Express server with Helmet. Endpoints:
+  - `/` → “Hello World!”
+  - `/secret` → reads secret `my-secret` from Key Vault via `DefaultAzureCredential`.
+- Requires env var `KEY_VAULT_URL` (e.g., `https://<kv-name>.vault.azure.net/`). The Deployment does not set this automatically—set it before hitting `/secret`.
+- Listens on port `3000`; Kubernetes Service exposes it on port `80`.
 
-## Table of Contents
+## Prerequisites
+- Azure subscription and an existing resource group (referenced by `resource_group_name` in `terraform.tfvars`).
+- Terraform ≥ 1.x, `az` CLI logged in with rights to create the listed resources, and `jq` (used in the image build step). `kubectl`/`helm` are helpful for verification.
+- Optional: `npm install` if you want to run the app locally; `KEY_VAULT_URL` must be set for `/secret`.
 
-*   [Installation](#installation)
-*   [Usage](#usage)
-*   [Endpoints](#endpoints)
-*   [Running Tests](#running-tests)
-*   [Contributing](#contributing)
-*   [License](#license)
+## Configure
+- Update `terraform.tfvars` with your subscription, tenant, location, resource group, VNet/subnet layouts, AKS sizing, and ingress host (change `myapp.yourdomain.com` in `kubernetes_ingress_v1.myapp_ingress` in `main.tf`).
+- Set your desired image tag in `image_tag.txt` (default: `ef5f01d`).
+- Create secret `my-secret` in the provisioned Key Vault with the value you want `/secret` to return.
+- Decide whether the ingress should be internal or public; current Helm values include both a static public IP and an internal load balancer annotation—adjust as needed.
+- Ensure the pod has `KEY_VAULT_URL` (e.g., `kubectl -n myapp set env deployment/myapp KEY_VAULT_URL=https://<kv>.vault.azure.net/` or add an env block in `kubernetes_deployment.myapp`).
 
-## Installation
-
-To get started with this project, clone the repository and install the required dependencies using npm.
-
+## Deploy (Terraform)
 ```bash
-# Clone the repository
-# Note: Replace 'your-username' with your actual GitHub username.
-git clone https://github.com/your-username/2bcloud-interview.git
-
-# Navigate to the project directory
-cd 2bcloud-interview
-
-# Install dependencies
-npm install
+terraform init
+terraform plan
+terraform apply
 ```
+Terraform uses local state (`terraform.tfstate` in this repo); switch to a remote backend for team use. The Kubernetes provider is wired to the created AKS cluster via the generated kubeconfig.
 
-## Usage
+## Access the app
+1. After apply, fetch the ingress IP/host:
+   ```bash
+   kubectl get ingress -n myapp
+   ```
+2. Point DNS (or `/etc/hosts`) for your chosen host to the ingress IP.
+3. Call `http://<host>/` for the root endpoint and `http://<host>/secret` after setting `KEY_VAULT_URL` and creating the `my-secret` secret.
 
-Provide clear instructions and code examples on how to use your project.
+## Utilities
+- Troubleshooting helpers live in `scripts/` (e.g., `debug-aks-network.sh`, `monitor.sh`). `aks-debug.sh` is aimed at cert-manager/ingress debugging.
 
-### Example 1: Basic Usage
-
-```javascript
-// Import the necessary modules
-const project = require('./index');
-
-// Example of how to use a function from your project
-project.someFunction();
-```
-
-### Example 2: Advanced Usage
-
-Show a more complex example if applicable.
-
-```javascript
-const { anotherFunction } = require('./index');
-
-anotherFunction({
-  optionA: 'valueA',
-  optionB: true
-});
-```
-
-## API Reference
-
-If this project is a library, document the public API here.
-
-*   `someFunction(arg1, arg2)` - Brief description of what this function does.
-*   `anotherFunction(options)` - Description of this function and its parameters.
-
-## Infrastructure (Terraform)
-
-The repo includes Terraform to stand up the Azure landing zone and deploy the app:
-
-- **Providers**: `azurerm`, `azuread`, `kubernetes`, `helm`, and `random` (CLI auth driven).
-- **Networking**: VNet plus subnets, NSGs, and route tables via reusable modules.
-- **Platform services**: Key Vault (stores ACR SP secret), ACR (no admin user), and an AKS cluster with Azure CNI, system identity, and RBAC role assignments for ACR pull and Key Vault secret access.
-- **Ingress**: Static public IP and Helm-managed `ingress-nginx` controller.
-- **App deploy**: Builds/pushes Docker image to ACR, then creates namespace, image pull secret, Deployment/Service/Ingress for `myapp` using the tag in `image_tag.txt`.
-- **State**: Currently local (`terraform.tfstate`); configure a remote backend before team use.
-
-## Running Tests
-
-To run the test suite for this project, use the following command:
-
+## Cleanup
+Destroy everything with:
 ```bash
-npm test
+terraform destroy
 ```
-
-## Contributing
-
-Contributions are welcome! Please read the contributing guidelines for details on how to submit pull requests, report issues, and more.
-
-## License
-
-This project is licensed under the MIT License.
-
-<!-- Badges -->
-[npm-image]: https://img.shields.io/npm/v/your-package-name.svg
-[npm-url]: https://www.npmjs.com/package/your-package-name
-[downloads-image]: https://img.shields.io/npm/dm/your-package-name.svg
-[downloads-url]: https://www.npmjs.com/package/your-package-name
-[build-image]: https://img.shields.io/travis/your-username/2bcloud-interview.svg
-[build-url]: https://travis-ci.org/your-username/2bcloud-interview
-[coverage-image]: https://img.shields.io/coveralls/your-username/2bcloud-interview/master.svg
-[coverage-url]: https://coveralls.io/github/your-username/2bcloud-interview?branch=master
