@@ -1,33 +1,22 @@
 # Project Title: 2bcloud-interview
 
-> A brief, one-sentence description of what this project does.
 > A sample Node.js web application for the 2bcloud interview process, demonstrating integration with Azure Key Vault.
 
-[![NPM Version][npm-image]][npm-url]
-[![NPM Downloads][downloads-image]][downloads-url]
-[![Build Status][build-image]][build-url]
-[![Coverage Status][coverage-image]][coverage-url]
 [![NPM Version][npm-image]][npm-url] [![Build Status][build-image]][build-url]
 
-A more detailed paragraph describing the project. Explain the problem it solves, its main features, and why someone would want to use it.
 This project is a simple web server built with Express.js. It is designed as a technical demonstration to showcase the ability to securely manage and retrieve application secrets using Azure Key Vault, a common requirement in modern cloud-native applications. The server starts up and exposes a basic "Hello World" endpoint.
 
 ## Table of Contents
 
-- [Project Title: 2bcloud-interview](#project-title-2bcloud-interview)
-  - [Table of Contents](#table-of-contents)
-  - [Installation](#installation)
-  - [Usage](#usage)
-    - [Example 1: Basic Usage](#example-1-basic-usage)
-    - [Example 2: Advanced Usage](#example-2-advanced-usage)
-  - [API Reference](#api-reference)
-  - [Running Tests](#running-tests)
-  - [Contributing](#contributing)
-  - [License](#license)
+*   [Installation](#installation)
+*   [Usage](#usage)
+*   [Endpoints](#endpoints)
+*   [Running Tests](#running-tests)
+*   [Contributing](#contributing)
+*   [License](#license)
 
 ## Installation
 
-To get started with this project, clone the repository and install the dependencies.
 To get started with this project, clone the repository and install the required dependencies using npm.
 
 ```bash
