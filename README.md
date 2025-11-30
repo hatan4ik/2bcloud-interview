@@ -1,5 +1,4 @@
 # 2bcloud interview: AKS + Node.js + Key Vault
-###
 This repository **does** spin up Kubernetes and deploy an application. Terraform stands up Azure networking, Key Vault, ACR, and an AKS cluster, builds the provided Node.js app into a container image, pushes it to ACR, installs NGINX ingress via Helm, and deploys the app with a Service and Ingress.
 
 ## What this deploys
@@ -8,6 +7,29 @@ This repository **does** spin up Kubernetes and deploy an application. Terraform
 - ACR (admin disabled) and AKS (Azure CNI, system-assigned identity, RBAC). Role assignments allow AKS to pull from ACR and read Key Vault secrets.
 - Static public IP and Helm-installed `ingress-nginx` in namespace `myapp` (currently annotated as an internal load balancer).
 - Docker image built with `az acr build` from this repo (tag read from `image_tag.txt`), pushed to ACR, and deployed as a Deployment/Service/Ingress in namespace `myapp`.
+
+## High-level architecture
+```
+Dev laptop (terraform apply, az CLI auth)
+    |
+    v
+Azure RG
+  ├─ VNet + subnets + NSGs + route tables
+  ├─ Key Vault (holds acr-sp-secret)
+  ├─ AAD App/SP for ACR auth
+  ├─ ACR (admin disabled)
+  ├─ Static Public IP
+  └─ AKS (Azure CNI, system MI)
+       ├─ Role: AcrPull, KV Secrets User
+       ├─ helm_release ingress-nginx (LB -> static IP)
+       └─ myapp namespace
+            ├─ imagePullSecret (ACR SP)
+            ├─ Deployment (Express/Helmet on :3000)
+            ├─ Service (ClusterIP :80 -> 3000)
+            └─ Ingress (host: myapp.yourdomain.com)
+```
+
+Request path: User → DNS host → static IP → ingress-nginx → Service → Pod. `/secret` calls Key Vault using `DefaultAzureCredential` + `KEY_VAULT_URL`.
 
 ## Application
 - `index.js` is an Express server with Helmet. Endpoints:
@@ -34,7 +56,7 @@ terraform init
 terraform plan
 terraform apply
 ```
-Terraform uses local state (`terraform.tfstate` in this repo); switch to a remote backend for team use. The Kubernetes provider is wired to the created AKS cluster via the generated kubeconfig.
+Terraform state is **not committed**; configure a remote backend for team use. The Kubernetes provider is wired to the created AKS cluster via the generated kubeconfig.
 
 ## Access the app
 1. After apply, fetch the ingress IP/host:
@@ -46,6 +68,11 @@ Terraform uses local state (`terraform.tfstate` in this repo); switch to a remot
 
 ## Utilities
 - Troubleshooting helpers live in `scripts/` (e.g., `debug-aks-network.sh`, `monitor.sh`). `aks-debug.sh` is aimed at cert-manager/ingress debugging.
+
+## Key decisions to finalize
+- Ingress exposure: keep public static IP or make it internal; update service annotations and DNS/host accordingly.
+- Inject `KEY_VAULT_URL` into the Deployment (env/Secret/ConfigMap) so `/secret` works out of the box.
+- Keep `.terraform/` and all `tfstate` files out of git; use a remote backend and short-lived local caches.
 
 ## Cleanup
 Destroy everything with:
